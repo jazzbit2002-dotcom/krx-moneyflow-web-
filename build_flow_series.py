@@ -318,48 +318,71 @@ def build_public(out, market_series, theme_series):
         falling = sorted([r for r in rot if r["deltaPp"]<0], key=lambda x:x["deltaPp"])[:5]
         theme_summary[str(w)] = {"rising": rising, "falling": falling}
 
-    # ===== STEP1: 시장 핵심 요약 (규칙 기반 자동 문장, LLM 생성 아님) =====
-    W30 = market_summary["30"]
-    kd = W30["kospiDeltaPp"]
-    if kd >= 5.0:      regime_label, tone = "코스피 쏠림", "kospi"
-    elif kd <= -5.0:   regime_label, tone = "코스닥 쏠림", "kosdaq"
-    else:              regime_label, tone = "시장 비중 혼조", "mixed"
-    regime_lines = []
-    if tone == "kospi":
-        regime_lines = ["최근 30일 기준 거래대금 비중이 코스피 쪽으로 이동했습니다.",
-                        "코스닥은 상대적으로 비중이 줄어든 상태입니다."]
-    elif tone == "kosdaq":
-        regime_lines = ["최근 30일 기준 거래대금 비중이 코스닥 쪽으로 이동했습니다.",
-                        "코스피는 상대적으로 비중이 줄어든 상태입니다."]
-    else:
-        regime_lines = ["최근 30일 기준 거래대금 비중은 큰 변화 없이 유지되고 있습니다."]
+    # ===== STEP1: 시장 핵심 요약 (단기/중기/장기 + 괴리 감지, 규칙 기반) =====
+    # 기간별 레짐 (임계 차등: 15일 ±3, 30일 ±5, 90일 ±7)
+    kospi_share = [x["share"] for x in market_series["KOSPI"]]
+    kosdaq_share = [x["share"] for x in market_series["KOSDAQ"]]
+    REGIME_TH = {15: 3.0, 30: 5.0, 90: 7.0}
+    REGIME_WINS = [15, 30, 90]
+    regime_by_window = {}
+    for w in REGIME_WINS:
+        kf, kt, kd = window_move_pct(kospi_share, w)
+        th = REGIME_TH[w]
+        if kd >= th:    lbl = "코스피 쏠림" if w < 90 else "코스피 우위"
+        elif kd <= -th: lbl = "코스닥 쏠림" if w < 90 else "코스닥 우위"
+        else:           lbl = "혼조"
+        regime_by_window[str(w)] = {"label": lbl, "kospiFrom": kf, "kospiTo": kt, "deltaPp": kd}
+    # 대표 국면 = 중기(30) 기준
+    regime_label = regime_by_window["30"]["label"]
+    regime_tone = "kospi" if "코스피" in regime_label else ("kosdaq" if "코스닥" in regime_label else "mixed")
 
-    # 오늘의 핵심 변화 (조건문 우선순위: 점유율 상승폭 → 하락폭 → 유입 → 분배 → 혼조+대형)
+    # 테마별 기간 delta (15/30/90) 계산
+    def theme_delta(seq, w):
+        shares = [e["shareOfMarket"] for e in seq]
+        _f, _t, d = window_move_pct(shares, w)
+        return d
+    divergences = []
+    for th, seq in theme_series.items():
+        if not seq: continue
+        s = theme_delta(seq, 15); m = theme_delta(seq, 30); l = theme_delta(seq, 90)
+        text = None
+        if s < -0.5 and l > 0.5:
+            text = f"{th}{josa(th,'은','는')} 장기 기준 거래대금 비중은 높아졌지만, 단기 기준으로는 둔화가 나타납니다."
+        elif s > 0.5 and l < -0.5:
+            text = f"{th}{josa(th,'은','는')} 장기 기준 비중은 낮지만, 단기 기준으로는 개선 흐름이 나타납니다."
+        elif abs(s) < 0.5 and abs(l) > 1.0:
+            direction = "높은 편" if l > 0 else "낮은 편"
+            text = f"{th}{josa(th,'은','는')} 장기 흐름은 {direction}이지만 단기 변화는 제한적입니다."
+        if text:
+            divergences.append({"theme": th, "shortPp": round(s,1), "longPp": round(l,1), "text": text})
+    # 괴리 큰 순 (|장기-단기| 차이)
+    divergences.sort(key=lambda x: -abs(x["longPp"]-x["shortPp"]))
+    divergences = divergences[:2]
+
+    # 오늘의 핵심 변화 (30일 기준, 최대 3)
     latest_theme = {}
     for th, seq in theme_series.items():
         if seq: latest_theme[th] = seq[-1]
     r30 = theme_summary["30"]["rising"]; f30 = theme_summary["30"]["falling"]
     key_changes = []
-    if r30:
-        top = r30[0]; th = top['theme']
-        key_changes.append(f"{th}{josa(th,'은','는')} 최근 30일 거래대금 비중이 상승했습니다({top['from']:.1f}% → {top['to']:.1f}%).")
-    if f30:
-        bot = f30[0]; th = bot['theme']
-        key_changes.append(f"{th}{josa(th,'은','는')} 최근 30일 거래대금 비중이 하락했습니다({bot['from']:.1f}% → {bot['to']:.1f}%).")
-    # 유입 우세 테마 묶음
+    kd30 = regime_by_window["30"]["deltaPp"]
+    if abs(kd30) >= 5.0:
+        side = "코스피" if kd30 > 0 else "코스닥"
+        key_changes.append(f"{side} 거래대금 비중이 최근 30일 기준 뚜렷하게 변화했습니다.")
     inflow = [th for th,e in latest_theme.items() if e["badge"]=="유입 우세"]
     if inflow:
         names = "·".join(inflow[:3])
         key_changes.append(f"{names}{josa(inflow[:3][-1],'은','는')} 거래대금 기준 유입 우세로 분류됩니다.")
-    # 분배 우세 후보
     outflow = [th for th,e in latest_theme.items() if e["badge"]=="분배 우세 후보"]
     if outflow:
         names = "·".join(outflow[:3])
-        key_changes.append(f"{names}{josa(outflow[:3][-1],'은','는')} 하락 거래대금이 우세한 분배 후보 구간입니다.")
+        key_changes.append(f"{names}{josa(outflow[:3][-1],'은','는')} 하락 거래대금 집중 후보로 분류됩니다.")
     key_changes = key_changes[:3]
 
     market_summary_block = {
-        "regime": {"label": regime_label, "badge": "거래대금 기준", "tone": tone, "lines": regime_lines},
+        "regime": {"label": regime_label, "badge": "거래대금 기준", "tone": regime_tone},
+        "regimeByWindow": regime_by_window,
+        "divergences": divergences,
         "keyChanges": key_changes
     }
 

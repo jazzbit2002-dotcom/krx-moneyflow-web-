@@ -91,20 +91,49 @@ function renderFlow(){
 }
 function setWin(w){ curWin=w; renderFlow(); renderRotation(); }
 
-/* ============ 시장 핵심 요약 (STEP1) ============ */
+/* ============ 시장 핵심 요약 (STEP1: 단기/중기/장기 + 괴리) ============ */
+function regimeBadgeCls(label){
+  if(label.indexOf("코스피")>=0) return "rb-kospi";
+  if(label.indexOf("코스닥")>=0) return "rb-kosdaq";
+  return "rb-mixed";
+}
 function renderKeySummary(){
   if(!FLOW || !FLOW.marketSummary){ document.getElementById("keycard").innerHTML='<div class="empty">요약 데이터를 불러오지 못했습니다.</div>'; return; }
   var ms=FLOW.marketSummary, rg=ms.regime;
-  var rbCls = rg.tone==="kospi"?"rb-kospi":(rg.tone==="kosdaq"?"rb-kosdaq":"rb-mixed");
-  var lines = rg.lines.map(function(l){ return esc(l); }).join("<br>");
-  var kc = (ms.keyChanges||[]).map(function(t,i){
-    return '<div class="kc"><span class="n">'+(i+1)+'</span><span class="t">'+esc(t)+'</span></div>';
+  var rbw=ms.regimeByWindow||{};
+
+  // 현재 국면
+  var head='<div class="ks-title">현재 로테이션 국면 <span class="regime-badge '+regimeBadgeCls(rg.label)+'">'+esc(rg.label)+'</span></div>';
+
+  // 기간별 로테이션 (단기/중기/장기)
+  var periods=[["15","단기"],["30","중기"],["90","장기"]];
+  var rows=periods.map(function(p){
+    var r=rbw[p[0]]; if(!r) return "";
+    return '<div class="ksp-row"><span class="ksp-lbl">'+p[1]+' '+p[0]+'일</span>'+
+      '<span class="ksp-badge '+regimeBadgeCls(r.label)+'">'+esc(r.label)+'</span>'+
+      '<span class="ksp-dp '+cg(r.deltaPp)+'">'+pp(r.deltaPp)+'</span></div>';
   }).join("");
-  document.getElementById("keycard").innerHTML =
-    '<div class="ks-title">현재 로테이션 국면 <span class="regime-badge '+rbCls+'">'+esc(rg.label)+'</span></div>'+
-    '<div class="ks-lines">'+lines+'</div>'+
-    '<div class="ks-sub">오늘의 핵심 변화</div>'+
-    (kc || '<div class="empty" style="padding:10px 0">특이 변화가 없습니다.</div>');
+  var periodBlock='<div class="ks-sub">기간별 로테이션 <span class="ks-hint">· 코스피 비중 기준</span></div><div class="ksp">'+rows+'</div>';
+
+  // 기간 괴리 (핵심)
+  var divBlock="";
+  if(ms.divergences && ms.divergences.length){
+    var dv=ms.divergences.map(function(d,i){
+      return '<div class="kc"><span class="n">'+(i+1)+'</span><span class="t">'+esc(d.text)+'</span></div>';
+    }).join("");
+    divBlock='<div class="ks-sub ks-diverge">기간 괴리 <span class="ks-hint">· 단기와 장기가 다른 테마</span></div>'+dv;
+  }
+
+  // 오늘의 핵심 변화
+  var kcBlock="";
+  if(ms.keyChanges && ms.keyChanges.length){
+    var kc=ms.keyChanges.map(function(t,i){
+      return '<div class="kc"><span class="n">'+(i+1)+'</span><span class="t">'+esc(t)+'</span></div>';
+    }).join("");
+    kcBlock='<div class="ks-sub">오늘의 핵심 변화</div>'+kc;
+  }
+
+  document.getElementById("keycard").innerHTML = head+periodBlock+divBlock+kcBlock;
 }
 
 /* ============ 테마 상세 바텀시트 (STEP2) ============ */
