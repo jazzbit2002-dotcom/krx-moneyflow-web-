@@ -1,7 +1,7 @@
 /* F29 한국 머니플로우 렌더 — krx_output.json + flow_series_public.json */
 var DATA = null;    // 하루 요약
 var FLOW = null;    // 자금흐름 시계열 (public slim)
-var curWin = 15;    // 자금흐름 윈도우
+var curWin = 60;    // 자금흐름 윈도우 (시장 추세 — 긴 기간이 변화 명확)
 
 /* ---------- 포맷 ---------- */
 function won(v){
