@@ -1,0 +1,258 @@
+/* F29 한국 머니플로우 렌더 — krx_output.json + flow_series_public.json */
+var DATA = null;    // 하루 요약
+var FLOW = null;    // 자금흐름 시계열 (public slim)
+var curWin = 30;    // 자금흐름 윈도우
+
+/* ---------- 포맷 ---------- */
+function won(v){
+  if(v>=1e12) return (v/1e12).toFixed(2)+"조";
+  if(v>=1e8)  return Math.round(v/1e8).toLocaleString()+"억";
+  return Math.round(v).toLocaleString();
+}
+function pct(v){ return (v>0?"+":"")+v.toFixed(2)+"%"; }
+function pp(v){ return (v>0?"+":"")+v.toFixed(1)+"%p"; }
+function cg(v){ return v>0?"up":(v<0?"down":"flat"); }
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function mk(m){ return m==="KOSDAQ"?"KOSDAQ":"KOSPI"; }
+function fmtDate(d){ return (d&&d.length===8)?(d.slice(0,4)+"."+d.slice(4,6)+"."+d.slice(6,8)+" 종가 기준"):"전일 종가 기준"; }
+
+/* ---------- 탭 ---------- */
+function showPane(name){
+  ["summary","stocks","themes","index"].forEach(function(p){
+    document.getElementById("pane-"+p).classList.toggle("on",p===name);
+    document.getElementById("tab-"+p).classList.toggle("on",p===name);
+  });
+  window.scrollTo(0,0);
+}
+
+/* ============ 자금흐름 (요약 최상단) ============ */
+function badgeClass(b){
+  if(b==="유입 우세") return "bg-in";
+  if(b==="분배 우세 후보") return "bg-out";
+  if(b==="대장주 단독") return "bg-lead";
+  if(b==="표본 부족") return "bg-few";
+  return "bg-mix";
+}
+function renderFlow(){
+  if(!FLOW){ document.getElementById("flowcard").innerHTML='<div class="empty">자금 흐름 데이터를 불러오지 못했습니다.</div>'; return; }
+  var series = FLOW.market.series;
+  var sm = FLOW.market.summary[String(curWin)];
+
+  // 윈도우 구간만 자름
+  var seg = series.slice(-curWin);
+  var W=480,H=150,PL=6,PR=6,PT=10,PB=18;
+  var n=seg.length;
+  function x(i){ return PL + (W-PL-PR)*(n<=1?0:i/(n-1)); }
+  function y(v){ return PT + (H-PT-PB)*(1-(v/100)); } // 0~100%
+  function line(key,color){
+    var pts = seg.map(function(d,i){ return x(i).toFixed(1)+","+y(d[key]).toFixed(1); }).join(" ");
+    return '<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="2.2" stroke-linejoin="round"/>';
+  }
+  // y 가이드 (25/50/75)
+  var guides = [25,50,75].map(function(g){
+    return '<line x1="'+PL+'" y1="'+y(g)+'" x2="'+(W-PR)+'" y2="'+y(g)+'" stroke="#1F2A3D" stroke-width="1" stroke-dasharray="2 3"/>'+
+           '<text x="'+(W-PR)+'" y="'+(y(g)-2)+'" fill="#5A6B84" font-size="9" text-anchor="end">'+g+'%</text>';
+  }).join("");
+  var svg = '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" style="width:100%;height:135px;display:block;">'+
+            guides + line("kospiSharePct","#3DD8B0") + line("kosdaqSharePct","#9D7BEA") + '</svg>';
+
+  var winBtns = FLOW.windows.map(function(w){
+    return '<button class="'+(w===curWin?"on":"")+'" onclick="setWin('+w+')">'+w+'일</button>';
+  }).join("");
+
+  var kDelta = sm.kospiDeltaPp, qDelta = sm.kosdaqDeltaPp;
+  var read;
+  if(sm.label==="코스피 쏠림") read = '최근 '+curWin+'일간 거래대금 비중이 <b>코스피(대형주)</b> 쪽으로 이동했습니다.';
+  else if(sm.label==="코스닥 쏠림") read = '최근 '+curWin+'일간 거래대금 비중이 <b>코스닥</b> 쪽으로 이동했습니다.';
+  else read = '최근 '+curWin+'일간 코스피·코스닥 거래대금 비중에 뚜렷한 이동은 없습니다.';
+
+  document.getElementById("flowcard").innerHTML =
+    '<div class="wm">f29.io/kr-moneyflow</div>'+
+    '<div class="flow-head"><span class="flow-title">시장 거래대금 비중 추이</span>'+
+      '<span class="flow-win">'+winBtns+'</span></div>'+
+    '<div class="flow-chart">'+svg+
+      '<div class="flow-legend"><span class="lg"><span class="dot" style="background:#3DD8B0"></span>코스피</span>'+
+      '<span class="lg"><span class="dot" style="background:#9D7BEA"></span>코스닥</span></div></div>'+
+    '<div class="flow-move">'+
+      '<div class="flow-col kospi"><div class="mk">KOSPI</div>'+
+        '<div class="val">'+sm.kospiFrom.toFixed(1)+'%<span class="arw">→</span>'+sm.kospiTo.toFixed(1)+'%</div>'+
+        '<div class="dp '+cg(kDelta)+'">'+pp(kDelta)+'</div></div>'+
+      '<div class="flow-col kosdaq"><div class="mk">KOSDAQ</div>'+
+        '<div class="val">'+sm.kosdaqFrom.toFixed(1)+'%<span class="arw">→</span>'+sm.kosdaqTo.toFixed(1)+'%</div>'+
+        '<div class="dp '+cg(qDelta)+'">'+pp(qDelta)+'</div></div>'+
+    '</div>'+
+    '<div class="flow-read">'+read+'</div>';
+}
+function setWin(w){ curWin=w; renderFlow(); renderRotation(); }
+
+/* ============ 테마 로테이션 (요약) ============ */
+function renderRotation(){
+  if(!FLOW){ document.getElementById("rotcard").innerHTML='<div class="empty">데이터 없음</div>'; return; }
+  var ts = FLOW.themes.summary[String(curWin)];
+  function bars(arr, kind){
+    if(!arr.length) return '<div class="empty" style="padding:10px 0">해당 없음</div>';
+    var maxAbs = Math.max.apply(null, arr.map(function(r){return Math.abs(r.deltaPp);}))||1;
+    return arr.map(function(r){
+      var w = Math.max(4, Math.abs(r.deltaPp)/maxAbs*100);
+      var col = kind==="up"?"var(--up)":"var(--down)";
+      return '<div class="rotb">'+
+        '<div class="rotb-top"><span class="rotb-nm">'+esc(r.theme)+'</span>'+
+        '<span class="rotb-dp '+(kind==="up"?"up":"down")+'">'+pp(r.deltaPp)+'</span></div>'+
+        '<div class="rotb-bar"><i style="width:'+w+'%;background:'+col+'"></i></div>'+
+        '<div class="rotb-sub">'+r.from.toFixed(1)+'% → '+r.to.toFixed(1)+'%</div>'+
+        '</div>';
+    }).join("");
+  }
+  document.getElementById("rotcard").innerHTML =
+    '<div class="rot-wrap">'+
+      '<div class="rot-col"><div class="rot-h up">자금 유입 (점유율↑)</div>'+bars(ts.rising,"up")+'</div>'+
+      '<div class="rot-col"><div class="rot-h down">자금 유출 (점유율↓)</div>'+bars(ts.falling,"down")+'</div>'+
+    '</div>';
+}
+
+/* ============ 시장 국면 ============ */
+function renderRegime(){
+  var ms=DATA.marketSummary;
+  function ln(o,cls){
+    var up=o.upRatio;
+    var tone = up>=55?"자금이 넓게 퍼진 편":(up>=45?"방향이 갈린 혼조":"오른 종목이 적은 편");
+    return '<div class="regime-line"><div class="regime-mk '+cls+'">'+o.market+'</div>'+
+      '<div class="regime-body">거래대금 <b>'+won(o.totalValue)+'</b> · 상승 <b>'+up.toFixed(1)+'%</b> ('+o.count+'종목) · '+tone+
+      '<div class="regime-bar"><i style="width:'+Math.max(2,Math.min(100,up))+'%"></i></div></div></div>';
+  }
+  document.getElementById("regimecard").innerHTML = ln(ms.KOSPI,"kospi")+ln(ms.KOSDAQ,"kosdaq");
+}
+
+/* ============ 거래대금 막대 ============ */
+function tvBars(arr, n){
+  arr = arr.slice(0,n);
+  var maxTv = Math.max.apply(null, arr.map(function(o){return o.tradingValue;}))||1;
+  return arr.map(function(o,i){
+    var w = Math.max(3, o.tradingValue/maxTv*100);
+    return '<div class="bar"><div class="bar-top">'+
+      '<span class="bar-rk">'+(i+1)+'</span>'+
+      '<span class="bar-nm">'+esc(o.name)+'<span class="mk">'+mk(o.market)+'</span></span>'+
+      '<span class="bar-cg '+cg(o.changeRate)+'">'+pct(o.changeRate)+'</span></div>'+
+      '<div class="bar-track"><i style="width:'+w+'%"></i></div>'+
+      '<div class="bar-val">'+won(o.tradingValue)+'</div></div>';
+  }).join("");
+}
+function renderTV5(){ document.getElementById("tv5card").innerHTML = tvBars(DATA.tradingValueTop||[],5); }
+function renderTV(mode){
+  var key = mode==="up"?"tradingValueUp":(mode==="down"?"tradingValueDown":"tradingValueTop");
+  document.getElementById("tvcard").innerHTML = tvBars(DATA[key]||[],10) || '<div class="empty">데이터 없음</div>';
+}
+function showTV(mode){
+  ["top","up","down"].forEach(function(m){ document.getElementById("tv-"+m).classList.toggle("on",m===mode); });
+  renderTV(mode);
+}
+
+/* ============ 후보 (리더/급등) ============ */
+function candCard(o,kind){
+  var c=cg(o.changeRate), tags="";
+  if(kind==="leader"){
+    if(o.tvConsecutive>=2) tags+='<span class="cand-tag tag-consec">연속 '+o.tvConsecutive+'일</span> ';
+    if(o.tvSurge>=2) tags+='<span class="cand-tag tag-surge">거래대금 '+o.tvSurge.toFixed(1)+'배</span>';
+  } else {
+    tags+='<span class="cand-tag tag-surge">거래대금 '+o.tvSurge.toFixed(1)+'배</span> ';
+    tags+='<span class="cand-tag tag-oneday">연속 '+o.tvConsecutive+'일</span>';
+  }
+  return '<div class="cand"><div class="cand-top"><span class="cand-name">'+esc(o.name)+'</span>'+
+    '<span class="cand-mk">'+mk(o.market)+'</span>'+
+    '<span class="cand-chg '+c+'">'+pct(o.changeRate)+'</span></div>'+
+    '<div class="cand-stats">'+
+      '<span class="s">20일 <b>'+(o.ret20>0?"+":"")+o.ret20.toFixed(1)+'%</b></span>'+
+      '<span class="s">5일 <b>'+(o.ret5>0?"+":"")+o.ret5.toFixed(1)+'%</b></span>'+
+      '<span class="s">거래대금 <b>'+won(o.tradingValue)+'</b></span> '+tags+
+    '</div></div>';
+}
+function renderLeaders(n,elId){
+  var arr=(DATA.leaderCandidates||[]).slice(0,n);
+  document.getElementById(elId).innerHTML = arr.length ? arr.map(function(o){return candCard(o,"leader");}).join("")
+    : '<div class="empty">오늘은 연속 유입 조건을 채운 리더 후보가 없습니다.</div>';
+}
+function renderSpikes(){
+  var arr=DATA.spikeCandidates||[];
+  document.getElementById("spikecard").innerHTML = arr.length ? arr.slice(0,10).map(function(o){return candCard(o,"spike");}).join("")
+    : '<div class="empty">오늘은 단기 관심 집중 후보가 없습니다.<br>거래대금이 하루만 튄 종목이 없다는 뜻입니다.</div>';
+}
+
+/* ============ 테마 (테마 탭) ============ */
+function renderThemes(){
+  // flow_series 최신 배지를 테마명으로 매핑 (30일 요약의 rising/falling에서 badge 추출)
+  var badgeMap={};
+  if(FLOW){
+    ["rising","falling"].forEach(function(k){
+      (FLOW.themes.summary["30"][k]||[]).forEach(function(r){ badgeMap[r.theme]=r.badge; });
+    });
+  }
+  var html=(DATA.themes||[]).map(function(t){
+    var badge = badgeMap[t.theme] || null;
+    var chips=(t.stocks||[]).slice(0,3).map(function(s){
+      return '<span class="th-chip"><b>'+esc(s.name)+'</b> <span class="'+cg(s.changeRate)+'">'+pct(s.changeRate)+'</span></span>';
+    }).join("");
+    var badgeHtml = badge ? '<span class="th-badge '+badgeClass(badge)+'">'+badge+'</span>' : '';
+    return '<div class="th"><div class="th-top"><span class="th-name">'+esc(t.theme)+'</span>'+badgeHtml+
+      '<span class="th-tv">'+won(t.tradingValue)+'</span></div>'+
+      '<div class="th-meta">상승 '+t.upRatio.toFixed(0)+'% · '+t.count+'종목 · '+
+      '<span class="th-lead">대장 '+esc(t.leader)+' <span class="'+cg(t.leaderChange)+'">'+pct(t.leaderChange)+'</span></span></div>'+
+      '<div class="th-stocks">'+chips+'</div></div>';
+  }).join("");
+  document.getElementById("themecard").innerHTML = html;
+}
+
+/* ============ 지수 기여 (지수 탭) ============ */
+function renderContrib(){
+  var top=DATA.contributionTop||[], bot=DATA.contributionBottom||[];
+  var allAbs = top.concat(bot).map(function(o){return Math.abs(o.contribution);});
+  var maxAbs = Math.max.apply(null, allAbs)||1;
+  function col(arr,pos){
+    return arr.map(function(o){
+      var w=Math.max(3,Math.abs(o.contribution)/maxAbs*100);
+      var sign=o.contribution>0?"+":"";
+      var col=pos?"var(--up)":"var(--down)";
+      return '<div class="cb"><div class="cb-top"><span class="cb-nm">'+esc(o.name)+'</span>'+
+        '<span class="cb-p '+(pos?"up":"down")+'">'+sign+Math.round(o.contribution).toLocaleString()+'</span></div>'+
+        '<div class="cb-track"><i style="width:'+w+'%;background:'+col+'"></i></div></div>';
+    }).join("");
+  }
+  document.getElementById("contribcard").innerHTML =
+    '<div class="contrib-wrap">'+
+      '<div class="contrib-col"><div class="contrib-h up">지수를 밀어올린</div>'+col(top,true)+'</div>'+
+      '<div class="contrib-col"><div class="contrib-h down">지수를 끌어내린</div>'+col(bot,false)+'</div>'+
+    '</div>';
+}
+
+/* ============ 이미지 저장 ============ */
+function saveCard(){
+  var el=document.querySelector(".pane.on");
+  if(typeof html2canvas!=="function") return;
+  html2canvas(el,{backgroundColor:"#0A0E17",scale:2}).then(function(cv){
+    var a=document.createElement("a"); a.download="f29-kr-moneyflow-"+(DATA?DATA.date:"")+".png"; a.href=cv.toDataURL(); a.click();
+  });
+}
+
+/* ============ 부트 ============ */
+function boot(){
+  if(DATA){
+    document.getElementById("updated").textContent=fmtDate(DATA.date);
+    renderRegime(); renderTV5(); renderLeaders(3,"leader3card");
+    renderLeaders(10,"leadercard"); renderSpikes(); showTV("top");
+    renderThemes(); renderContrib();
+  }
+  if(FLOW){ renderFlow(); renderRotation(); }
+}
+function load(url){ return fetch(url+"?_="+Date.now()).then(function(r){ if(!r.ok) throw new Error(url+" "+r.status); return r.json(); }); }
+function start(){
+  Promise.all([
+    load("/kr-moneyflow/krx_output.json").then(function(d){DATA=d;}).catch(function(e){console.error(e);}),
+    load("/kr-moneyflow/flow_series_public.json").then(function(d){FLOW=d;}).catch(function(e){console.error(e);})
+  ]).then(function(){
+    if(!DATA && !FLOW){
+      document.querySelectorAll(".loading").forEach(function(el){ el.textContent="데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."; });
+      return;
+    }
+    boot();
+  });
+}
+if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",start);}else{start();}
