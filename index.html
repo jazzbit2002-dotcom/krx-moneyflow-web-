@@ -355,6 +355,11 @@
   <div class="sheet-in" id="themeSheetIn"><div class="loading">불러오는 중...</div></div>
 </div>
 
+<!-- 종목 상세 바텀시트 -->
+<div class="sheet" id="stockSheet" onclick="if(event.target===this)closeStockSheet()">
+  <div class="sheet-in" id="stockSheetIn"><div class="loading">불러오는 중...</div></div>
+</div>
+
 <script>
 var HEADER_T = {
   ko:{ nv0:"한국주식 돈의 흐름", nv1:"미국주식 돈의 흐름", nv2:"비트코인 위험지수", nv3:"뇌동매매 체크",

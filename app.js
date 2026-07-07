@@ -91,6 +91,90 @@ function renderFlow(){
 }
 function setWin(w){ curWin=w; renderFlow(); renderRotation(); }
 
+/* ============ 종목 상세 바텀시트 (STEP3: 자금 압력 판독) ============ */
+var stockCache={}, stockWin=30, curStock=null;
+function stateClassStock(state){
+  if(state==="up_concentration") return "bg-in";
+  if(state==="down_concentration") return "bg-out";
+  if(state==="fade_up") return "bg-mix";
+  if(state==="fade_down") return "bg-out";
+  if(state==="attention_up") return "bg-lead";
+  if(state==="attention_down") return "bg-few";
+  return "bg-mix";
+}
+function openStockSheet(code, name){
+  if(!code) return;
+  curStock=code; stockWin=30;
+  document.getElementById("stockSheet").classList.add("on");
+  document.getElementById("stockSheetIn").innerHTML='<div class="loading">불러오는 중...</div>';
+  if(stockCache[code]){ renderStockSheet(stockCache[code]); return; }
+  fetch("/kr-moneyflow/stocks/"+encodeURIComponent(code)+".json?_="+Date.now())
+    .then(function(r){ if(!r.ok) throw new Error("404"); return r.json(); })
+    .then(function(d){ stockCache[code]=d; if(curStock===code) renderStockSheet(d); })
+    .catch(function(){
+      document.getElementById("stockSheetIn").innerHTML=
+        '<div class="sheet-hd"><span class="st">'+esc(name||code)+'</span>'+
+        '<span class="x" onclick="closeStockSheet()">×</span></div>'+
+        '<div class="empty">이 종목은 아직 충분한 데이터가 없습니다.<br>(신규 상장 등)</div>';
+    });
+}
+function closeStockSheet(){ document.getElementById("stockSheet").classList.remove("on"); curStock=null; }
+function setStockWin(w){ stockWin=w; if(stockCache[curStock]) renderStockSheet(stockCache[curStock]); }
+function renderStockSheet(d){
+  var sm=d.summary[String(stockWin)];
+  var shareSeries=d.tradingSharePctSeries.slice(-stockWin);
+  var priceSeries=d.closeIndexSeries.slice(-stockWin);
+  var n=shareSeries.length;
+  // 2라인 겹침: 점유율(좌축 느낌)·종가인덱스(우축 느낌) 각각 정규화해서 같은 박스에
+  var W=480,H=150,PL=6,PR=6,PT=12,PB=16;
+  function normLine(arr, key, color, dash){
+    var vals=arr.map(function(x){return x[key];});
+    var mn=Math.min.apply(null,vals), mx=Math.max.apply(null,vals);
+    var pad=(mx-mn)*0.15||1; mn-=pad; mx+=pad;
+    function x(i){ return PL+(W-PL-PR)*(n<=1?0:i/(n-1)); }
+    function y(v){ return PT+(H-PT-PB)*(1-((v-mn)/(mx-mn||1))); }
+    var pts=arr.map(function(o,i){ return x(i).toFixed(1)+","+y(o[key]).toFixed(1); }).join(" ");
+    return '<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="2.2" stroke-linejoin="round"'+(dash?' stroke-dasharray="4 3"':'')+'/>';
+  }
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" style="width:100%;height:135px;display:block;">'+
+    normLine(priceSeries,"v","#3DD8B0",false)+   // 종가 인덱스 = teal 실선
+    normLine(shareSeries,"v","#D8B45F",true)+     // 거래대금 점유율 = gold 점선
+    '</svg>';
+
+  var winBtns=[15,30,60,90].map(function(w){
+    return '<button class="'+(w===stockWin?"on":"")+'" onclick="setStockWin('+w+')">'+w+'일</button>';
+  }).join("");
+
+  // 판독 해석문 (규칙 기반, 결과만)
+  var sc=cg(sm.priceChangePct);
+  var read;
+  var st=sm.flowState;
+  if(st==="up_concentration") read='거래대금이 늘면서 가격도 함께 올랐습니다. 거래가 상승 방향에 실린 구간입니다.';
+  else if(st==="down_concentration") read='거래대금이 늘었지만 가격은 내렸습니다. 거래가 하락 방향에 실린 구간으로, 매도 압력이 우세했을 수 있습니다.';
+  else if(st==="fade_up") read='거래대금 비중은 줄었지만 가격은 올랐습니다. 관심은 다소 식었으나 가격은 버틴 구간입니다.';
+  else if(st==="fade_down") read='거래대금 비중과 가격이 함께 줄었습니다. 관심과 가격이 동반 위축된 구간입니다.';
+  else if(st==="attention_up") read='가격 변화는 뚜렷하지 않지만 거래대금 관심이 늘었습니다.';
+  else if(st==="attention_down") read='거래대금 관심이 줄어든 구간입니다.';
+  else read='최근 '+stockWin+'일간 뚜렷한 방향이 나타나지 않았습니다.';
+
+  document.getElementById("stockSheetIn").innerHTML=
+    '<div class="sheet-hd"><span class="st">'+esc(d.name)+'</span>'+
+      '<span class="cand-mk" style="margin-left:6px">'+mk(d.market==="KOSDAQ"?"KOSDAQ":"KOSPI")+'</span>'+
+      '<span class="x" onclick="closeStockSheet()">×</span></div>'+
+    '<div class="sheet-sub">거래대금 점유율 · 가격 흐름 · 최근 '+stockWin+'일</div>'+
+    '<div class="sheet-win">'+winBtns+'</div>'+
+    svg+
+    '<div class="flow-legend" style="margin:6px 0 2px">'+
+      '<span class="lg"><span class="dot" style="background:#3DD8B0"></span>가격(지수화)</span>'+
+      '<span class="lg"><span class="dot" style="background:#D8B45F"></span>거래대금 점유율</span></div>'+
+    '<div class="sheet-share"><span class="big">'+
+      '가격 '+(sm.priceChangePct>0?"+":"")+sm.priceChangePct.toFixed(1)+'%</span>'+
+      '<span class="dp '+cg(sm.shareDeltaPp)+'">점유율 '+pp(sm.shareDeltaPp)+'</span></div>'+
+    '<div><span class="sheet-state '+stateClassStock(st)+'">'+esc(sm.flowLabel)+'</span></div>'+
+    '<div class="sheet-read">'+read+'</div>'+
+    '<div class="sheet-note">거래대금·가격 기준의 흐름이며, 실제 순매수(투자자별 수급) 데이터가 아닙니다.</div>';
+}
+
 /* ============ 시장 핵심 요약 (STEP1: 단기/중기/장기 + 괴리) ============ */
 function regimeBadgeCls(label){
   if(label.indexOf("코스피")>=0) return "rb-kospi";
@@ -243,7 +327,7 @@ function tvBars(arr, n){
     var w = Math.max(3, o.tradingValue/maxTv*100);
     return '<div class="bar"><div class="bar-top">'+
       '<span class="bar-rk">'+(i+1)+'</span>'+
-      '<span class="bar-nm">'+esc(o.name)+'<span class="mk">'+mk(o.market)+'</span></span>'+
+      '<span class="bar-nm clickable" onclick="openStockSheet(\''+o.code+'\',\''+esc(o.name)+'\')">'+esc(o.name)+'<span class="mk">'+mk(o.market)+'</span></span>'+
       '<span class="bar-cg '+cg(o.changeRate)+'">'+pct(o.changeRate)+'</span></div>'+
       '<div class="bar-track"><i style="width:'+w+'%"></i></div>'+
       '<div class="bar-val">'+won(o.tradingValue)+'</div></div>';
@@ -269,7 +353,7 @@ function candCard(o,kind){
     tags+='<span class="cand-tag tag-surge">거래대금 '+o.tvSurge.toFixed(1)+'배</span> ';
     tags+='<span class="cand-tag tag-oneday">연속 '+o.tvConsecutive+'일</span>';
   }
-  return '<div class="cand"><div class="cand-top"><span class="cand-name">'+esc(o.name)+'</span>'+
+  return '<div class="cand"><div class="cand-top"><span class="cand-name clickable" onclick="openStockSheet(\''+o.code+'\',\''+esc(o.name)+'\')">'+esc(o.name)+'</span>'+
     '<span class="cand-mk">'+mk(o.market)+'</span>'+
     '<span class="cand-chg '+c+'">'+pct(o.changeRate)+'</span></div>'+
     '<div class="cand-stats">'+
@@ -323,7 +407,7 @@ function renderContrib(){
       var w=Math.max(3,Math.abs(o.contribution)/maxAbs*100);
       var sign=o.contribution>0?"+":"";
       var col=pos?"var(--up)":"var(--down)";
-      return '<div class="cb"><div class="cb-top"><span class="cb-nm">'+esc(o.name)+'</span>'+
+      return '<div class="cb"><div class="cb-top"><span class="cb-nm clickable" onclick="openStockSheet(\''+o.code+'\',\''+esc(o.name)+'\')">'+esc(o.name)+'</span>'+
         '<span class="cb-p '+(pos?"up":"down")+'">'+sign+Math.round(o.contribution).toLocaleString()+'</span></div>'+
         '<div class="cb-track"><i style="width:'+w+'%;background:'+col+'"></i></div></div>';
     }).join("");
