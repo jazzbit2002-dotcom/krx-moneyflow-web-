@@ -24,8 +24,8 @@ KRX_DIR    = "/root/krx-moneyflow"
 OHLCV_DIR  = os.path.join(KRX_DIR, "data", "ohlcv")
 THEME_PATH = os.path.join(KRX_DIR, "theme_master.json")
 SERIES_DIR = os.path.join(KRX_DIR, "data", "series")
-OUT_INTERNAL = os.path.join(SERIES_DIR, "flow_series.json")
-OUT_WEB      = os.path.join(KRX_DIR, "output", "flow_series.json")
+OUT_INTERNAL   = os.path.join(SERIES_DIR, "flow_series.json")          # 내부 원본 (판정재료 포함, 웹서빙 X)
+OUT_WEB_PUBLIC = os.path.join(KRX_DIR, "output", "flow_series_public.json")  # 공개 slim (% + badge만)
 
 WINDOWS   = [15, 30, 60, 90]
 EPS       = 0.3      # netFlow dead zone (%)
@@ -267,26 +267,84 @@ def build():
         },
         "coverage": coverage_last
     }
-    return out, dates
+    return out, dates, market_series, theme_series
+
+# ---------- 공개용 slim 생성 ----------
+def window_move_pct(seq, w):
+    if not seq: return 0.0, 0.0, 0.0
+    seg = seq[-w:] if len(seq) >= w else seq
+    then = avg_head(seg); now = avg_tail(seg)
+    return round(then*100,2), round(now*100,2), round((now-then)*100,2)
+
+def build_public(out, market_series, theme_series):
+    """화면 전용 slim. 내부 판정 재료(netFlow·leaderShare·coverage 원수치·raw tv) 제외."""
+    kospi = {x["date"]: x["share"] for x in market_series["KOSPI"]}
+    kosdaq = {x["date"]: x["share"] for x in market_series["KOSDAQ"]}
+    all_dates = [x["date"] for x in market_series["KOSPI"]]
+    market_line = [{"date": d,
+        "kospiSharePct": round(kospi.get(d,0)*100,2),
+        "kosdaqSharePct": round(kosdaq.get(d,0)*100,2)} for d in all_dates]
+
+    kospi_share = [x["share"] for x in market_series["KOSPI"]]
+    kosdaq_share = [x["share"] for x in market_series["KOSDAQ"]]
+    market_summary = {}
+    for w in WINDOWS:
+        kf, kt, kd = window_move_pct(kospi_share, w)
+        qf, qt, qd = window_move_pct(kosdaq_share, w)
+        if kd >= 2.0:   label = "코스피 쏠림"
+        elif qd >= 2.0: label = "코스닥 쏠림"
+        else:           label = "뚜렷한 이동 없음"
+        market_summary[str(w)] = {
+            "kospiFrom": kf, "kospiTo": kt, "kospiDeltaPp": kd,
+            "kosdaqFrom": qf, "kosdaqTo": qt, "kosdaqDeltaPp": qd, "label": label}
+
+    theme_summary = {}
+    for w in WINDOWS:
+        rot = []
+        for th, seq in theme_series.items():
+            shares = [x["shareOfMarket"] for x in seq]
+            f, t, d = window_move_pct(shares, w)
+            rot.append({"theme": th, "from": f, "to": t, "deltaPp": d,
+                        "badge": seq[-1]["badge"] if seq else "혼조"})
+        rising = sorted([r for r in rot if r["deltaPp"]>0], key=lambda x:-x["deltaPp"])[:5]
+        falling = sorted([r for r in rot if r["deltaPp"]<0], key=lambda x:x["deltaPp"])[:5]
+        theme_summary[str(w)] = {"rising": rising, "falling": falling}
+
+    return {
+        "generatedAt": out["generatedAt"],
+        "startDate": out["startDate"], "endDate": out["endDate"],
+        "windows": WINDOWS, "note": out["note"],
+        "market": {"series": market_line, "summary": market_summary},
+        "themes": {"summary": theme_summary}
+    }
 
 def main():
     os.makedirs(SERIES_DIR, exist_ok=True)
-    os.makedirs(os.path.dirname(OUT_WEB), exist_ok=True)
-    out, dates = build()
-    for path in (OUT_INTERNAL, OUT_WEB):
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(out, f, ensure_ascii=False, separators=(",",":"))
+    os.makedirs(os.path.dirname(OUT_WEB_PUBLIC), exist_ok=True)
+    out, dates, market_series, theme_series = build()
+    # 원본은 내부에만 (웹 서빙 안 함)
+    with open(OUT_INTERNAL, "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, separators=(",",":"))
+    # 공개 slim만 output/
+    pub = build_public(out, market_series, theme_series)
+    with open(OUT_WEB_PUBLIC, "w", encoding="utf-8") as f:
+        json.dump(pub, f, ensure_ascii=False, separators=(",",":"))
     # 검증 출력
     ks = out["market"]["KOSPI"][-1]["share"] if out["market"]["KOSPI"] else 0
     kq = out["market"]["KOSDAQ"][-1]["share"] if out["market"]["KOSDAQ"] else 0
+    internal_sz = os.path.getsize(OUT_INTERNAL)
+    public_sz = os.path.getsize(OUT_WEB_PUBLIC)
     print("flow_series OK")
     print(f"dates: {out['startDate']} ~ {out['endDate']} / {out['days']} days")
     print(f"KOSPI latest share: {ks*100:.1f}%")
     print(f"KOSDAQ latest share: {kq*100:.1f}%")
     print(f"theme coverage: {out['coverage']['themeCoveredTradingValueShare']*100:.1f}%")
     print("themes:", len(out["themes"]))
-    print("top rising share:", ", ".join(r["theme"] for r in out["summary"]["themeRotation"]["rising"]))
-    print("top falling share:", ", ".join(r["theme"] for r in out["summary"]["themeRotation"]["falling"]))
+    print("top rising share (30d):", ", ".join(r["theme"] for r in out["summary"]["themeRotation"]["rising"]))
+    print("top falling share (30d):", ", ".join(r["theme"] for r in out["summary"]["themeRotation"]["falling"]))
+    print(f"internal: {internal_sz} bytes (data/series/, 웹서빙 X)")
+    print(f"public:   {public_sz} bytes (output/flow_series_public.json, 웹서빙 O)")
+    print(f"public windows: {pub['windows']}")
 
 if __name__ == "__main__":
     main()
