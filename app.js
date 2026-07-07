@@ -440,8 +440,29 @@ function renderContrib(){
 function saveCard(){
   var el=document.querySelector(".pane.on");
   if(typeof html2canvas!=="function") return;
+  // 캡처용 워터마크 2개 (우측 상단 · 우측 하단) 임시 삽입
+  var prevPos = el.style.position;
+  if(!prevPos || prevPos==="static") el.style.position="relative";
+  function mkWm(pos){
+    var w=document.createElement("div");
+    w.className="__savewm";
+    w.textContent="https://f29.io/kr-moneyflow";
+    w.style.cssText="position:absolute;"+pos+";font-size:11px;color:#8B9AB5;opacity:0.6;letter-spacing:0.3px;pointer-events:none;z-index:9999;font-family:'JetBrains Mono',ui-monospace,monospace;";
+    return w;
+  }
+  var wmTop=mkWm("top:8px;right:12px;");
+  var wmBot=mkWm("bottom:8px;right:12px;");
+  el.appendChild(wmTop); el.appendChild(wmBot);
   html2canvas(el,{backgroundColor:"#0A0E17",scale:2}).then(function(cv){
     var a=document.createElement("a"); a.download="f29-kr-moneyflow-"+(DATA?DATA.date:"")+".png"; a.href=cv.toDataURL(); a.click();
+    // 워터마크 제거 (화면 원복)
+    if(wmTop.parentNode) wmTop.parentNode.removeChild(wmTop);
+    if(wmBot.parentNode) wmBot.parentNode.removeChild(wmBot);
+    el.style.position=prevPos;
+  }).catch(function(){
+    if(wmTop.parentNode) wmTop.parentNode.removeChild(wmTop);
+    if(wmBot.parentNode) wmBot.parentNode.removeChild(wmBot);
+    el.style.position=prevPos;
   });
 }
 
