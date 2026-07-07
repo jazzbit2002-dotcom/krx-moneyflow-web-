@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F29 한국 머니플로우 — 거래대금·테마 로테이션·지수 기여 분석</title>
+<meta name="description" content="한국 주식 테마와 종목의 거래대금·시총 기여·연속성을 기준으로 '오늘 진짜 돈이 들어온 곳'과 '겉만 오른 곳'을 분리해 보여주는 자금 지도. 공공데이터포털 금융위 시세 기반, 전일 종가 기준 매일 갱신. 가격이 아닌 자금 흐름 지표.">
+<meta name="keywords" content="한국주식 거래대금, 테마 로테이션, 순환매, 시총 기여, 지수 기여도, 코스피 코스닥, 자금 흐름, 머니플로우, Money Flow, F29">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://f29.io/kr-moneyflow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="F29 한국 머니플로우 — 거래대금·테마 로테이션">
+<meta property="og:description" content="한국 테마·종목의 거래대금과 시총 기여로 자금이 어디로 도는지 순위로. 리더 후보·단기 관심 집중 매일 갱신.">
+<meta property="og:url" content="https://f29.io/kr-moneyflow">
+<meta property="og:image" content="https://f29.io/kr-moneyflow/og.png">
+<meta property="og:site_name" content="F29">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="F29 한국 머니플로우 — 거래대금·테마 로테이션">
+<meta name="twitter:description" content="한국 테마·종목의 거래대금과 시총 기여로 자금이 어디로 도는지 순위로. 매일 갱신.">
+<meta name="twitter:image" content="https://f29.io/kr-moneyflow/og.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"F29 한국 머니플로우","url":"https://f29.io/kr-moneyflow","applicationCategory":"FinanceApplication","description":"한국 주식 테마·종목의 거래대금·시총 기여·연속성 기반 자금 흐름 분석. 공공데이터포털 금융위 시세, 전일 종가 기준 매일 갱신.","inLanguage":"ko","offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"}}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root{
+    --bg:#0A0E17; --card:#131A28; --card2:#0F1520;
+    --line:#1F2A3D; --line2:#2C3A54;
+    --txt:#E8EDF7; --txt2:#8B9AB5; --txt3:#5A6B84;
+    --teal:#3DD8B0; --purple:#9D7BEA; --pink:#E85D9C; --gold:#D8B45F;
+    --up:#3DDC84; --down:#F0997B; --mid:#E0B341; --neu:#7A8AA0;
+  }
+  body { background:var(--bg); font-family:'Pretendard',-apple-system,'Apple SD Gothic Neo','Malgun Gothic',BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:var(--txt); line-height:1.6; -webkit-font-smoothing:antialiased; }
+
+  /* ===== 포탈 통일 헤더 ===== */
+  nav{position:sticky;top:0;z-index:50;background:rgba(10,14,23,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  .nav-in{max-width:1080px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:34px}
+  .brand{display:flex;align-items:center;gap:9px;text-decoration:none}
+  .brand .mark{width:26px;height:26px;flex-shrink:0}
+  .brand .brandname{font-size:1.28rem;font-weight:800;letter-spacing:.02em;color:var(--txt)}
+  .navlinks{display:flex;gap:26px;margin-left:8px}
+  .navlinks a{text-decoration:none;color:var(--txt2);font-size:.86rem;font-weight:600;transition:color .16s;white-space:nowrap}
+  .navlinks a:hover{color:var(--txt)}
+  .navlinks a .en{display:block;font-size:.62rem;color:var(--txt3);font-weight:500;letter-spacing:.04em;margin-top:1px}
+  .navlinks a.active{color:var(--teal)}
+  .navlinks a.active .en{color:var(--teal);opacity:.7}
+  .nav-lang{margin-left:auto;display:flex;gap:3px}
+  .nav-lang button{background:transparent;border:1px solid var(--line);color:var(--txt3);border-radius:6px;padding:4px 9px;font-size:.68rem;cursor:pointer;font-family:inherit;transition:all .16s}
+  .nav-lang button:hover{border-color:var(--line2);color:var(--txt2)}
+  .nav-lang button.on{border-color:var(--teal);color:var(--teal)}
+  @media(max-width:820px){ .navlinks{display:none} }
+
+  .wrap { max-width:600px; margin:0 auto; padding:16px; }
+  .head { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .head .title { font-size:16px; font-weight:600; color:var(--teal); }
+  .head .date { font-size:11px; color:var(--txt2); }
+  .sub { font-size:11px; color:var(--txt3); margin-bottom:16px; line-height:1.6; }
+  .label { font-size:11px; color:var(--txt2); margin:18px 0 8px; }
+  .label .hint { color:var(--txt3); font-weight:400; }
+  .card { background:var(--card); border-radius:10px; padding:6px 14px; margin-bottom:14px; }
+  .wm { position:absolute; top:8px; left:50%; transform:translateX(-50%); color:var(--txt2); opacity:0.35; font-size:11px; letter-spacing:1px; pointer-events:none; }
+
+  /* 색상 유틸 */
+  .up{color:var(--up)} .down{color:var(--down)} .mid{color:var(--mid)} .neu{color:var(--neu)} .flat{color:var(--txt2)}
+  .num{font-variant-numeric:tabular-nums}
+
+  /* 1. 시장 국면 */
+  .regime { position:relative; }
+  .regime-line { display:flex; gap:10px; padding:11px 0; border-bottom:0.5px solid var(--line); }
+  .regime-line:last-child { border-bottom:none; }
+  .regime-mk { font-size:12px; font-weight:700; width:60px; flex-shrink:0; }
+  .regime-mk.kospi { color:var(--teal); }
+  .regime-mk.kosdaq { color:var(--purple); }
+  .regime-body { flex:1; font-size:11.5px; color:var(--txt2); line-height:1.5; }
+  .regime-body b { color:var(--txt); font-weight:600; }
+  .regime-bar { height:5px; border-radius:3px; background:var(--line); margin-top:5px; overflow:hidden; }
+  .regime-bar > i { display:block; height:100%; background:var(--up); }
+  .regime-read { font-size:11.5px; color:#B4B2A9; line-height:1.6; padding:10px 0 4px; }
+  .regime-read b { color:var(--teal); font-weight:600; }
+
+  /* 2. 테마 로테이션 */
+  .th { padding:12px 0; border-bottom:0.5px solid var(--line); }
+  .th:last-child { border-bottom:none; }
+  .th-top { display:flex; align-items:baseline; gap:8px; }
+  .th-name { font-size:13.5px; font-weight:700; color:var(--txt); }
+  .th-tv { font-size:12px; font-weight:700; color:var(--gold); margin-left:auto; font-variant-numeric:tabular-nums; }
+  .th-meta { font-size:11px; color:var(--txt3); margin:3px 0 6px; }
+  .th-lead { color:var(--txt2); }
+  .th-flow { display:inline-block; font-size:10px; font-weight:600; padding:1px 7px; border-radius:5px; margin-left:6px; }
+  .flow-in { background:#12271C; color:var(--up); }
+  .flow-out { background:#2A1A17; color:var(--down); }
+  .flow-mix { background:#2A2410; color:var(--mid); }
+  .th-stocks { display:flex; flex-wrap:wrap; gap:5px; }
+  .th-chip { font-size:10.5px; padding:2px 8px; border-radius:6px; background:var(--card2); border:0.5px solid var(--line); color:var(--txt2); white-space:nowrap; }
+  .th-chip b { font-weight:600; }
+
+  /* 3·4. 후보 카드 (리더/급등) */
+  .cand { padding:11px 0; border-bottom:0.5px solid var(--line); }
+  .cand:last-child { border-bottom:none; }
+  .cand-top { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .cand-name { font-size:13px; font-weight:700; color:var(--txt); }
+  .cand-mk { font-size:9.5px; color:var(--txt3); border:0.5px solid var(--line2); border-radius:4px; padding:0 5px; }
+  .cand-chg { font-size:12.5px; font-weight:700; margin-left:auto; font-variant-numeric:tabular-nums; }
+  .cand-stats { display:flex; flex-wrap:wrap; gap:12px; font-size:11px; color:var(--txt3); }
+  .cand-stats .s b { color:var(--txt2); font-weight:600; font-variant-numeric:tabular-nums; }
+  .cand-tag { display:inline-block; font-size:9.5px; font-weight:600; padding:1px 6px; border-radius:4px; margin-left:2px; }
+  .tag-consec { background:#12271C; color:var(--up); }
+  .tag-surge { background:#2A2410; color:var(--mid); }
+  .tag-oneday { background:#2A1A17; color:var(--down); }
+  .empty { color:var(--txt3); font-size:12px; text-align:center; padding:22px 0; line-height:1.6; }
+
+  /* 5. 거래대금 탭 */
+  .tvtabs{display:flex;gap:8px;margin:8px 0 12px}
+  .tvtabs button{flex:1;padding:9px;border:1px solid var(--line);background:transparent;color:var(--txt2);border-radius:8px;font-size:12.5px;cursor:pointer;font-family:inherit;transition:all .16s}
+  .tvtabs button.on{background:var(--card);color:var(--teal);border-color:var(--teal)}
+  .row { display:flex; align-items:center; padding:8px 0; border-bottom:0.5px solid var(--line); }
+  .row:last-child { border-bottom:none; }
+  .row .rk { font-size:11px; font-weight:600; color:var(--txt3); width:20px; }
+  .row .nm { font-size:12.5px; flex:1; color:var(--txt); }
+  .row .nm .mk { font-size:9px; color:var(--txt3); margin-left:5px; }
+  .row .tv { font-size:11.5px; color:var(--gold); font-variant-numeric:tabular-nums; margin-right:10px; }
+  .row .cg { font-size:12px; font-weight:600; width:56px; text-align:right; font-variant-numeric:tabular-nums; }
+
+  /* 6. 지수 기여 */
+  .contrib-wrap { display:flex; gap:10px; }
+  .contrib-col { flex:1; }
+  .contrib-h { font-size:11px; margin-bottom:6px; font-weight:600; }
+  .contrib-h.up { color:var(--up); } .contrib-h.down { color:var(--down); }
+  .cb { display:flex; align-items:center; padding:7px 0; border-bottom:0.5px solid var(--line); gap:8px; }
+  .cb:last-child { border-bottom:none; }
+  .cb .n { font-size:11.5px; flex:1; color:var(--txt2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cb .p { font-size:11px; font-weight:600; font-variant-numeric:tabular-nums; }
+
+  .savebtn { text-align:center; margin:6px 0 16px; }
+  .savebtn button { background:var(--card); color:var(--teal); border:0.5px solid var(--teal); border-radius:8px; padding:8px 18px; font-size:11px; cursor:pointer; font-family:inherit; }
+  .disc { color:#3d3f44; font-size:9.5px; line-height:1.7; text-align:center; margin:18px 0 6px; }
+  .loading { color:var(--txt2); font-size:13px; text-align:center; padding:30px 0; }
+
+  /* ===== 포탈 통일 풋터 ===== */
+  footer{margin-top:40px;border-top:1px solid var(--line);padding:30px 0 46px}
+  .foot-in{max-width:1080px;margin:0 auto;padding:0 24px}
+  .foot-brand{font-size:.9rem;font-weight:700;color:var(--txt2)}
+  .foot-contact{margin-top:12px;font-size:.78rem;color:var(--txt2)}
+  .foot-contact .em{color:var(--teal);font-weight:600;unicode-bidi:bidi-override}
+  .foot-dis{margin-top:12px;font-size:.72rem;color:var(--txt3);line-height:1.65;max-width:620px}
+  .foot-copy{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:.7rem;color:var(--txt3);line-height:1.6}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+</style>
+</head>
+<body>
+<nav>
+  <div class="nav-in">
+    <a class="brand" href="/">
+      <svg class="mark" viewBox="0 0 32 32" fill="none">
+        <rect x="3" y="3" width="26" height="26" rx="7" stroke="#3DD8B0" stroke-width="2"/>
+        <path d="M11 21V11h9" stroke="#3DD8B0" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M11 16h6" stroke="#3DD8B0" stroke-width="2.4" stroke-linecap="round"/>
+      </svg>
+      <span class="brandname">F29</span>
+    </a>
+    <div class="navlinks">
+      <a href="/kr-moneyflow" class="active"><span id="nv0">한국주식 돈의 흐름</span><span class="en">KR Money Flow</span></a>
+      <a href="/moneyflow"><span id="nv1">미국주식 돈의 흐름</span><span class="en">Money Flow</span></a>
+      <a href="/index.html"><span id="nv2">비트코인 위험지수</span><span class="en">Crypto Risk Index</span></a>
+      <a href="/precheck/"><span id="nv3">뇌동매매 체크</span><span class="en">Precheck</span></a>
+    </div>
+    <div class="nav-lang">
+      <button data-l="ko" class="on" onclick="setLangHF('ko')">KO</button>
+      <button data-l="en" onclick="setLangHF('en')">EN</button>
+      <button data-l="zh" onclick="setLangHF('zh')">中</button>
+      <button data-l="ja" onclick="setLangHF('ja')">日</button>
+    </div>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div class="head">
+    <span class="title">오늘의 한국 시장 자금 지도</span>
+    <span class="date" id="updated">전일 종가 기준</span>
+  </div>
+  <p class="sub">오늘 오른 종목이 아니라, 오늘 진짜 돈이 들어온 곳과 겉만 오른 곳을 분리해 봅니다. 거래대금·시총 기여·연속성 기준입니다.</p>
+
+  <!-- 1. 시장 국면 -->
+  <div class="label">오늘의 시장 국면</div>
+  <div class="card regime" id="regimecard"><div class="loading">불러오는 중...</div></div>
+
+  <!-- 2. 테마 로테이션 -->
+  <div class="label">테마 머니 로테이션 <span class="hint">· 거래대금 순</span></div>
+  <div class="card" id="themecard"><div class="loading">불러오는 중...</div></div>
+
+  <!-- 3. 리더 후보 -->
+  <div class="label">리더 후보 <span class="hint">· 연속 자금 유입 + 상대강도</span></div>
+  <div class="card" id="leadercard"><div class="loading">불러오는 중...</div></div>
+
+  <!-- 4. 단기 관심 집중 후보 -->
+  <div class="label">단기 관심 집중 후보 <span class="hint">· 하루 거래대금 폭증, 연속성 미확인</span></div>
+  <div class="card" id="spikecard"><div class="loading">불러오는 중...</div></div>
+
+  <!-- 5. 거래대금 집중 -->
+  <div class="label">거래대금 집중</div>
+  <div class="tvtabs">
+    <button id="tv-top" class="on" onclick="showTV('top')">TOP</button>
+    <button id="tv-up" onclick="showTV('up')">상승 ↑</button>
+    <button id="tv-down" onclick="showTV('down')">하락 ↓</button>
+  </div>
+  <div class="card" id="tvcard"><div class="loading">불러오는 중...</div></div>
+
+  <!-- 6. 지수 기여도 -->
+  <div class="label">지수 기여도 분해 <span class="hint">· 누가 지수를 만들었나</span></div>
+  <div class="card" id="contribcard"><div class="loading">불러오는 중...</div></div>
+
+  <div class="savebtn"><button onclick="saveCard()">이미지로 저장</button></div>
+
+  <p class="disc" id="discShort">전일 종가 기준 · 공공데이터포털 금융위 시세 · 실시간 아님 · 매수매도 신호 아님 · 투자 판단과 결과는 본인 책임</p>
+</div>
+
+<footer>
+  <div class="foot-in">
+    <div class="foot-brand mono">F29 · f29.io</div>
+    <div class="foot-contact" id="footContact"></div>
+    <div class="foot-dis" id="disclaimer">F29는 시장 위험 상태와 돈의 흐름을 정리해 보여주는 참고 도구입니다. 매수·매도 신호가 아니며, 투자 판단과 그 결과는 본인에게 있습니다.</div>
+    <div class="foot-copy" id="footCopy"></div>
+  </div>
+</footer>
+
+<script>
+/* ===== 포탈 통일 헤더/푸터 다국어 ===== */
+var HEADER_T = {
+  ko:{ nv0:"한국주식 돈의 흐름", nv1:"미국주식 돈의 흐름", nv2:"비트코인 위험지수", nv3:"뇌동매매 체크",
+       contactLabel:"문의 및 제안",
+       disclaimer:"F29는 시장 위험 상태와 돈의 흐름을 정리해 보여주는 참고 도구입니다. 매수·매도 신호가 아니며, 투자 판단과 그 결과는 본인에게 있습니다." },
+  en:{ nv0:"KR Money Flow", nv1:"Money Flow", nv2:"Crypto Risk Index", nv3:"Precheck",
+       contactLabel:"Contact & suggestions",
+       disclaimer:"F29 is a reference tool that organizes market risk states and money flow. It is not a buy/sell signal; investment decisions and their outcomes are your own." },
+  zh:{ nv0:"韩国资金流向", nv1:"资金流向", nv2:"风险指数", nv3:"冲动交易检查",
+       contactLabel:"咨询与建议",
+       disclaimer:"F29 是整理市场风险状态与资金流向的参考工具。并非买卖信号，投资决策及其结果由您自行承担。" },
+  ja:{ nv0:"韓国資金の流れ", nv1:"資金の流れ", nv2:"リスク指数", nv3:"衝動売買チェック",
+       contactLabel:"お問い合わせ・ご提案",
+       disclaimer:"F29 は市場のリスク状態と資金の流れを整理して示す参考ツールです。売買シグナルではなく、投資判断とその結果はご自身に帰属します。" }
+};
+function setLangHF(l){
+  var t = HEADER_T[l] || HEADER_T.ko;
+  var set=function(id,v){var e=document.getElementById(id);if(e)e.textContent=v;};
+  set("nv0",t.nv0); set("nv1",t.nv1); set("nv2",t.nv2); set("nv3",t.nv3);
+  set("disclaimer",t.disclaimer);
+  var _u="admin", _d="f29"+".io";
+  var _fc=document.getElementById("footContact");
+  if(_fc){ _fc.innerHTML = t.contactLabel + ' <span class="em">' + _u + String.fromCharCode(64) + _d + '</span>'; }
+  var _cp=document.getElementById("footCopy");
+  if(_cp){ _cp.innerHTML="Copyright \u00A9 2026 F29. All Rights Reserved.<br>F29의 콘텐츠·UI·질문 구조·게이트 로직·디자인 및 소스코드는 저작권법의 보호를 받습니다.<br>사전 서면 허가 없는 복제·배포·재게시·상업적 이용 및 유사 서비스 제작을 금지합니다. 위반 시 민·형사상 법적 조치를 취할 수 있습니다."; }
+  document.querySelectorAll(".nav-lang button").forEach(function(b){b.classList.toggle("on",b.dataset.l===l);});
+}
+function _initLangHF(){
+  var _n=(navigator.language||"ko").slice(0,2);
+  var _init=["ko","en","zh","ja"].indexOf(_n)>=0?_n:"ko";
+  setLangHF(_init);
+}
+if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",_initLangHF);}else{_initLangHF();}
+
+/* ===== 한국 머니플로우 렌더 ===== */
+var DATA = null;
+
+/* 포맷터 */
+function won(v){ // 거래대금 → 조/억
+  if(v>=1e12) return (v/1e12).toFixed(2)+"조";
+  if(v>=1e8)  return Math.round(v/1e8).toLocaleString()+"억";
+  return Math.round(v).toLocaleString();
+}
+function pct(v){ var s=(v>0?"+":"")+v.toFixed(2)+"%"; return s; }
+function cgClass(v){ return v>0?"up":(v<0?"down":"flat"); }
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function mkTag(mk){ return mk==="KOSDAQ"?"KOSDAQ":"KOSPI"; }
+
+/* 1. 시장 국면 */
+function renderRegime(){
+  var ms = DATA.marketSummary, med = DATA.marketRet20Median;
+  function line(o, cls){
+    var up = o.upRatio;
+    var tone = up>=55?"자금이 넓게 퍼진 편":(up>=45?"방향이 갈린 혼조":"오른 종목이 적은 편");
+    return '<div class="regime-line">'+
+      '<div class="regime-mk '+cls+'">'+o.market+'</div>'+
+      '<div class="regime-body">거래대금 <b>'+won(o.totalValue)+'</b> · 상승 종목 <b>'+up.toFixed(1)+'%</b> ('+o.count+'종목 중) · '+tone+
+      '<div class="regime-bar"><i style="width:'+Math.max(2,Math.min(100,up))+'%"></i></div>'+
+      '</div></div>';
+  }
+  var read = "20일 수익률 중앙값 <b>"+(med>0?"+":"")+med.toFixed(1)+"%</b> — 시장 전반의 최근 한 달 온도입니다. 값이 높을수록 오래 오른 종목이 많았다는 뜻이며, 방향 판단이 아니라 상태 참고용입니다.";
+  document.getElementById("regimecard").innerHTML =
+    line(ms.KOSPI,"kospi")+line(ms.KOSDAQ,"kosdaq")+
+    '<div class="regime-read">'+read+'</div>';
+}
+
+/* 2. 테마 로테이션 */
+function flowBadge(t){
+  // 상승비율 + 대장 방향으로 자금 유입/유출/혼조 라벨 (단정 회피, 후보 표현)
+  if(t.upRatio>=60) return '<span class="th-flow flow-in">유입 우세</span>';
+  if(t.upRatio<=20) return '<span class="th-flow flow-out">분배 우세 후보</span>';
+  return '<span class="th-flow flow-mix">혼조</span>';
+}
+function renderThemes(){
+  var html = DATA.themes.map(function(t){
+    var chips = (t.stocks||[]).slice(0,6).map(function(s){
+      var c = cgClass(s.changeRate);
+      return '<span class="th-chip"><b>'+esc(s.name)+'</b> <span class="'+c+'">'+pct(s.changeRate)+'</span></span>';
+    }).join("");
+    var leadC = cgClass(t.leaderChange);
+    return '<div class="th">'+
+      '<div class="th-top"><span class="th-name">'+esc(t.theme)+'</span>'+flowBadge(t)+
+      '<span class="th-tv">'+won(t.tradingValue)+'</span></div>'+
+      '<div class="th-meta">상승 '+t.upRatio.toFixed(0)+'% · '+t.count+'종목 · '+
+      '<span class="th-lead">대장 '+esc(t.leader)+' <span class="'+leadC+'">'+pct(t.leaderChange)+'</span></span></div>'+
+      '<div class="th-stocks">'+chips+'</div>'+
+      '</div>';
+  }).join("");
+  document.getElementById("themecard").innerHTML = html;
+}
+
+/* 3·4. 후보 (리더/급등 공용) */
+function candCard(o, kind){
+  var c = cgClass(o.changeRate);
+  var tags = "";
+  if(kind==="leader"){
+    if(o.tvConsecutive>=2) tags += '<span class="cand-tag tag-consec">연속 '+o.tvConsecutive+'일</span>';
+    if(o.tvSurge>=2) tags += '<span class="cand-tag tag-surge">거래대금 '+o.tvSurge.toFixed(1)+'배</span>';
+  } else {
+    tags += '<span class="cand-tag tag-surge">거래대금 '+o.tvSurge.toFixed(1)+'배</span>';
+    tags += '<span class="cand-tag tag-oneday">연속 '+o.tvConsecutive+'일</span>';
+  }
+  return '<div class="cand">'+
+    '<div class="cand-top"><span class="cand-name">'+esc(o.name)+'</span>'+
+    '<span class="cand-mk">'+mkTag(o.market)+'</span>'+
+    '<span class="cand-chg '+c+'">'+pct(o.changeRate)+'</span></div>'+
+    '<div class="cand-stats">'+
+      '<span class="s">20일 <b>'+(o.ret20>0?"+":"")+o.ret20.toFixed(1)+'%</b></span>'+
+      '<span class="s">5일 <b>'+(o.ret5>0?"+":"")+o.ret5.toFixed(1)+'%</b></span>'+
+      '<span class="s">거래대금 <b>'+won(o.tradingValue)+'</b></span>'+
+      tags+
+    '</div></div>';
+}
+function renderLeaders(){
+  var arr = DATA.leaderCandidates||[];
+  if(!arr.length){ document.getElementById("leadercard").innerHTML='<div class="empty">오늘은 연속 유입 조건을 채운 리더 후보가 없습니다.</div>'; return; }
+  document.getElementById("leadercard").innerHTML = arr.map(function(o){return candCard(o,"leader");}).join("");
+}
+function renderSpikes(){
+  var arr = DATA.spikeCandidates||[];
+  if(!arr.length){ document.getElementById("spikecard").innerHTML='<div class="empty">오늘은 단기 관심 집중 후보가 없습니다.<br>거래대금이 하루만 튄 종목이 없다는 뜻입니다.</div>'; return; }
+  document.getElementById("spikecard").innerHTML = arr.map(function(o){return candCard(o,"spike");}).join("");
+}
+
+/* 5. 거래대금 탭 */
+function renderTV(mode){
+  var key = mode==="up"?"tradingValueUp":(mode==="down"?"tradingValueDown":"tradingValueTop");
+  var arr = DATA[key]||[];
+  var html = arr.map(function(o,i){
+    var c = cgClass(o.changeRate);
+    return '<div class="row"><span class="rk">'+(i+1)+'</span>'+
+      '<span class="nm">'+esc(o.name)+'<span class="mk">'+mkTag(o.market)+'</span></span>'+
+      '<span class="tv">'+won(o.tradingValue)+'</span>'+
+      '<span class="cg '+c+'">'+pct(o.changeRate)+'</span></div>';
+  }).join("");
+  document.getElementById("tvcard").innerHTML = html || '<div class="empty">데이터 없음</div>';
+}
+function showTV(mode){
+  ["top","up","down"].forEach(function(m){ document.getElementById("tv-"+m).classList.toggle("on",m===mode); });
+  renderTV(mode);
+}
+
+/* 6. 지수 기여 */
+function renderContrib(){
+  var top = DATA.contributionTop||[], bot = DATA.contributionBottom||[];
+  function col(arr, cls){
+    return arr.map(function(o){
+      var sign = o.contribution>0?"+":"";
+      return '<div class="cb"><span class="n">'+esc(o.name)+'</span>'+
+        '<span class="p '+(o.contribution>0?"up":"down")+'">'+sign+Math.round(o.contribution).toLocaleString()+'</span></div>';
+    }).join("");
+  }
+  document.getElementById("contribcard").innerHTML =
+    '<div class="contrib-wrap">'+
+      '<div class="contrib-col"><div class="contrib-h up">지수를 밀어올린</div>'+col(top,"up")+'</div>'+
+      '<div class="contrib-col"><div class="contrib-h down">지수를 끌어내린</div>'+col(bot,"down")+'</div>'+
+    '</div>';
+}
+
+/* 날짜 포맷 */
+function fmtDate(d){
+  if(!d||d.length!==8) return "전일 종가 기준";
+  return d.slice(0,4)+"."+d.slice(4,6)+"."+d.slice(6,8)+" 종가 기준";
+}
+
+/* 이미지 저장 */
+function saveCard(){
+  var el = document.querySelector(".wrap");
+  if(typeof html2canvas!=="function"){ return; }
+  html2canvas(el,{backgroundColor:"#0A0E17",scale:2}).then(function(cv){
+    var a=document.createElement("a"); a.download="f29-kr-moneyflow-"+(DATA?DATA.date:"")+".png"; a.href=cv.toDataURL(); a.click();
+  });
+}
+
+/* 부트 */
+function boot(data){
+  DATA = data;
+  document.getElementById("updated").textContent = fmtDate(DATA.date);
+  if(DATA.note){ document.getElementById("discShort").textContent = DATA.note + " · 투자 판단과 결과는 본인 책임"; }
+  renderRegime();
+  renderThemes();
+  renderLeaders();
+  renderSpikes();
+  showTV("top");
+  renderContrib();
+}
+
+function loadData(){
+  fetch("/kr-moneyflow/krx_output.json?_="+Date.now())
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(boot)
+    .catch(function(e){
+      document.querySelectorAll(".loading").forEach(function(el){
+        el.textContent = "데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+      });
+      console.error("krx load fail:", e);
+    });
+}
+if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",loadData);}else{loadData();}
+</script>
+</body>
+</html>
