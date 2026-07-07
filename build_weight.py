@@ -204,12 +204,19 @@ def main():
                 "shareDeltaPp": r["shareDeltaPp"], "priceChangePct": r["priceChangePct"],
                 "flowLabel": r["flowLabel"]}
 
+    # 상태별 개수 (요약 카드용)
+    counts = {}
+    for r in ranks:
+        st = r["flowState"]
+        counts[st] = counts.get(st, 0) + 1
+
     out = {
         "generatedAt": datetime.now().astimezone().isoformat(),
         "date": date,
         "rankWindow": RANK_WINDOW,
         "note": "거래대금·가격 기준 참고지표",
         "targetCount": ok,
+        "counts": counts,
         "buyPressure": [slim(r) for r in buy[:20]],
         "sellPressure": [slim(r) for r in sell[:20]]
     }
