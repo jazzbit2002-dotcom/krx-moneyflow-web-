@@ -15,6 +15,12 @@ function cg(v){ return v>0?"up":(v<0?"down":"flat"); }
 function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function mk(m){ return m==="KOSDAQ"?"KOSDAQ":"KOSPI"; }
 function fmtDate(d){ return (d&&d.length===8)?(d.slice(0,4)+"."+d.slice(4,6)+"."+d.slice(6,8)+" 종가 기준"):"전일 종가 기준"; }
+function josa(w, wb, nb){ // wb=받침있을때, nb=받침없을때
+  if(!w) return wb;
+  var c=w.charCodeAt(w.length-1);
+  if(c>=0xAC00 && c<=0xD7A3) return ((c-0xAC00)%28!==0)?wb:nb;
+  return wb;
+}
 
 /* ---------- 탭 ---------- */
 function showPane(name){
@@ -85,6 +91,83 @@ function renderFlow(){
 }
 function setWin(w){ curWin=w; renderFlow(); renderRotation(); }
 
+/* ============ 시장 핵심 요약 (STEP1) ============ */
+function renderKeySummary(){
+  if(!FLOW || !FLOW.marketSummary){ document.getElementById("keycard").innerHTML='<div class="empty">요약 데이터를 불러오지 못했습니다.</div>'; return; }
+  var ms=FLOW.marketSummary, rg=ms.regime;
+  var rbCls = rg.tone==="kospi"?"rb-kospi":(rg.tone==="kosdaq"?"rb-kosdaq":"rb-mixed");
+  var lines = rg.lines.map(function(l){ return esc(l); }).join("<br>");
+  var kc = (ms.keyChanges||[]).map(function(t,i){
+    return '<div class="kc"><span class="n">'+(i+1)+'</span><span class="t">'+esc(t)+'</span></div>';
+  }).join("");
+  document.getElementById("keycard").innerHTML =
+    '<div class="ks-title">현재 로테이션 국면 <span class="regime-badge '+rbCls+'">'+esc(rg.label)+'</span></div>'+
+    '<div class="ks-lines">'+lines+'</div>'+
+    '<div class="ks-sub">오늘의 핵심 변화</div>'+
+    (kc || '<div class="empty" style="padding:10px 0">특이 변화가 없습니다.</div>');
+}
+
+/* ============ 테마 상세 바텀시트 (STEP2) ============ */
+var sheetTheme=null, sheetWin=30;
+function openThemeSheet(theme){
+  if(!FLOW || !FLOW.themeDetails || !FLOW.themeDetails[theme]){ return; }
+  sheetTheme=theme; sheetWin=30;
+  document.getElementById("themeSheet").classList.add("on");
+  renderThemeSheet();
+}
+function closeSheet(){ document.getElementById("themeSheet").classList.remove("on"); sheetTheme=null; }
+function setSheetWin(w){ sheetWin=w; renderThemeSheet(); }
+function stateClass(badge){
+  if(badge==="유입 우세") return "bg-in";
+  if(badge==="분배 우세 후보") return "bg-out";
+  if(badge==="대장주 단독") return "bg-lead";
+  if(badge==="표본 부족") return "bg-few";
+  return "bg-mix";
+}
+function renderThemeSheet(){
+  var det=FLOW.themeDetails[sheetTheme];
+  var sm=det.summary[String(sheetWin)];
+  var series=det.series.slice(-sheetWin);
+  // 점유율 라인
+  var W=480,H=130,PL=6,PR=32,PT=10,PB=16, n=series.length;
+  var vals=series.map(function(d){return d.sharePct;});
+  var mn=Math.min.apply(null,vals), mx=Math.max.apply(null,vals);
+  var pad=(mx-mn)*0.15||1; mn-=pad; mx+=pad;
+  function x(i){ return PL+(W-PL-PR)*(n<=1?0:i/(n-1)); }
+  function y(v){ return PT+(H-PT-PB)*(1-((v-mn)/(mx-mn||1))); }
+  var pts=series.map(function(d,i){ return x(i).toFixed(1)+","+y(d.sharePct).toFixed(1); }).join(" ");
+  var yLabels=[mx,(mx+mn)/2,mn].map(function(v){
+    return '<text x="'+(W-PR+3)+'" y="'+(y(v)+3)+'" fill="#5A6B84" font-size="9">'+v.toFixed(1)+'%</text>';
+  }).join("");
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" style="width:100%;height:118px;display:block;">'+
+    '<polyline points="'+pts+'" fill="none" stroke="#D8B45F" stroke-width="2.2" stroke-linejoin="round"/>'+yLabels+'</svg>';
+
+  var winBtns=FLOW.windows.map(function(w){
+    return '<button class="'+(w===sheetWin?"on":"")+'" onclick="setSheetWin('+w+')">'+w+'일</button>';
+  }).join("");
+
+  // 해석문 (규칙 기반, label 활용)
+  var dpCls=cg(sm.deltaPp);
+  var read;
+  var shareUp = sm.deltaPp>0.3, shareDown = sm.deltaPp<-0.3;
+  var josaIga = josa(sheetTheme,"이","가");
+  if(shareDown) read='전체 시장 거래대금에서 '+esc(sheetTheme)+josaIga+' 차지하는 비중이 줄었습니다. 시장 관심이 상대적으로 이 테마에서 빠져나간 구간입니다.';
+  else if(shareUp) read='전체 시장 거래대금에서 '+esc(sheetTheme)+josaIga+' 차지하는 비중이 늘었습니다. 시장 관심이 상대적으로 이 테마로 모인 구간입니다.';
+  else read='전체 시장 거래대금에서 '+esc(sheetTheme)+'의 비중은 큰 변화 없이 유지되고 있습니다.';
+
+  document.getElementById("themeSheetIn").innerHTML=
+    '<div class="sheet-hd"><span class="st">'+esc(sheetTheme)+' 자금 흐름</span>'+
+      '<span class="x" onclick="closeSheet()">×</span></div>'+
+    '<div class="sheet-sub">거래대금 점유율 · 최근 '+sheetWin+'일</div>'+
+    '<div class="sheet-win">'+winBtns+'</div>'+
+    svg+
+    '<div class="sheet-share"><span class="big">'+sm.from.toFixed(1)+'%<span class="arw"> → </span>'+sm.to.toFixed(1)+'%</span>'+
+      '<span class="dp '+dpCls+'">'+pp(sm.deltaPp)+'</span></div>'+
+    '<div><span class="sheet-state '+stateClass(sm.badge)+'">'+esc(sm.label)+'</span></div>'+
+    '<div class="sheet-read">'+read+'</div>'+
+    '<div class="sheet-note">이 화면은 거래대금 기준의 흐름입니다. 투자자별 순매수 데이터는 포함하지 않습니다.</div>';
+}
+
 /* ============ 테마 로테이션 (요약) ============ */
 function renderRotation(){
   if(!FLOW){ document.getElementById("rotcard").innerHTML='<div class="empty">데이터 없음</div>'; return; }
@@ -96,7 +179,7 @@ function renderRotation(){
       var w = Math.max(4, Math.abs(r.deltaPp)/maxAbs*100);
       var col = kind==="up"?"var(--up)":"var(--down)";
       return '<div class="rotb">'+
-        '<div class="rotb-top"><span class="rotb-nm">'+esc(r.theme)+'</span>'+
+        '<div class="rotb-top"><span class="rotb-nm clickable" onclick="openThemeSheet(\''+esc(r.theme)+'\')">'+esc(r.theme)+'</span>'+
         '<span class="rotb-dp '+(kind==="up"?"up":"down")+'">'+pp(r.deltaPp)+'</span></div>'+
         '<div class="rotb-bar"><i style="width:'+w+'%;background:'+col+'"></i></div>'+
         '<div class="rotb-sub">'+r.from.toFixed(1)+'% → '+r.to.toFixed(1)+'%</div>'+
@@ -192,7 +275,7 @@ function renderThemes(){
       return '<span class="th-chip"><b>'+esc(s.name)+'</b> <span class="'+cg(s.changeRate)+'">'+pct(s.changeRate)+'</span></span>';
     }).join("");
     var badgeHtml = badge ? '<span class="th-badge '+badgeClass(badge)+'">'+badge+'</span>' : '';
-    return '<div class="th"><div class="th-top"><span class="th-name">'+esc(t.theme)+'</span>'+badgeHtml+
+    return '<div class="th"><div class="th-top"><span class="th-name clickable" onclick="openThemeSheet(\''+esc(t.theme)+'\')">'+esc(t.theme)+'</span>'+badgeHtml+
       '<span class="th-tv">'+won(t.tradingValue)+'</span></div>'+
       '<div class="th-meta">상승 '+t.upRatio.toFixed(0)+'% · '+t.count+'종목 · '+
       '<span class="th-lead">대장 '+esc(t.leader)+' <span class="'+cg(t.leaderChange)+'">'+pct(t.leaderChange)+'</span></span></div>'+
@@ -240,7 +323,7 @@ function boot(){
     renderLeaders(10,"leadercard"); renderSpikes(); showTV("top");
     renderThemes(); renderContrib();
   }
-  if(FLOW){ renderFlow(); renderRotation(); }
+  if(FLOW){ renderKeySummary(); renderFlow(); renderRotation(); }
 }
 function load(url){ return fetch(url+"?_="+Date.now()).then(function(r){ if(!r.ok) throw new Error(url+" "+r.status); return r.json(); }); }
 function start(){

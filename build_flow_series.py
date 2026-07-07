@@ -62,6 +62,14 @@ def avg_head(seq, n=AVG_N):
     s = seq[:n] if len(seq) >= n else seq
     return sum(s) / len(s)
 
+def josa(word, with_b, without_b):
+    """받침 유무로 조사 선택 (with_b=받침있을때, without_b=받침없을때)"""
+    if not word: return with_b
+    ch = word[-1]
+    if '가' <= ch <= '힣':
+        return with_b if (ord(ch) - 0xAC00) % 28 != 0 else without_b
+    return with_b
+
 # ---------- 로드 ----------
 def load_theme_map():
     """theme_master(list) → {code: theme}"""
@@ -310,12 +318,85 @@ def build_public(out, market_series, theme_series):
         falling = sorted([r for r in rot if r["deltaPp"]<0], key=lambda x:x["deltaPp"])[:5]
         theme_summary[str(w)] = {"rising": rising, "falling": falling}
 
+    # ===== STEP1: 시장 핵심 요약 (규칙 기반 자동 문장, LLM 생성 아님) =====
+    W30 = market_summary["30"]
+    kd = W30["kospiDeltaPp"]
+    if kd >= 5.0:      regime_label, tone = "코스피 쏠림", "kospi"
+    elif kd <= -5.0:   regime_label, tone = "코스닥 쏠림", "kosdaq"
+    else:              regime_label, tone = "시장 비중 혼조", "mixed"
+    regime_lines = []
+    if tone == "kospi":
+        regime_lines = ["최근 30일 기준 거래대금 비중이 코스피 쪽으로 이동했습니다.",
+                        "코스닥은 상대적으로 비중이 줄어든 상태입니다."]
+    elif tone == "kosdaq":
+        regime_lines = ["최근 30일 기준 거래대금 비중이 코스닥 쪽으로 이동했습니다.",
+                        "코스피는 상대적으로 비중이 줄어든 상태입니다."]
+    else:
+        regime_lines = ["최근 30일 기준 거래대금 비중은 큰 변화 없이 유지되고 있습니다."]
+
+    # 오늘의 핵심 변화 (조건문 우선순위: 점유율 상승폭 → 하락폭 → 유입 → 분배 → 혼조+대형)
+    latest_theme = {}
+    for th, seq in theme_series.items():
+        if seq: latest_theme[th] = seq[-1]
+    r30 = theme_summary["30"]["rising"]; f30 = theme_summary["30"]["falling"]
+    key_changes = []
+    if r30:
+        top = r30[0]; th = top['theme']
+        key_changes.append(f"{th}{josa(th,'은','는')} 최근 30일 거래대금 비중이 상승했습니다({top['from']:.1f}% → {top['to']:.1f}%).")
+    if f30:
+        bot = f30[0]; th = bot['theme']
+        key_changes.append(f"{th}{josa(th,'은','는')} 최근 30일 거래대금 비중이 하락했습니다({bot['from']:.1f}% → {bot['to']:.1f}%).")
+    # 유입 우세 테마 묶음
+    inflow = [th for th,e in latest_theme.items() if e["badge"]=="유입 우세"]
+    if inflow:
+        names = "·".join(inflow[:3])
+        key_changes.append(f"{names}{josa(inflow[:3][-1],'은','는')} 거래대금 기준 유입 우세로 분류됩니다.")
+    # 분배 우세 후보
+    outflow = [th for th,e in latest_theme.items() if e["badge"]=="분배 우세 후보"]
+    if outflow:
+        names = "·".join(outflow[:3])
+        key_changes.append(f"{names}{josa(outflow[:3][-1],'은','는')} 하락 거래대금이 우세한 분배 후보 구간입니다.")
+    key_changes = key_changes[:3]
+
+    market_summary_block = {
+        "regime": {"label": regime_label, "badge": "거래대금 기준", "tone": tone, "lines": regime_lines},
+        "keyChanges": key_changes
+    }
+
+    # ===== STEP2: 테마 상세 (점유율 90일 시계열 + 윈도우 summary, netFlow 비공개) =====
+    def flow_label(deltaPp, badge):
+        # 점유율 방향(관심도) + 내부 방향(badge)을 자연스럽게. 모순 표현 회피.
+        if deltaPp > 0.3:   share_txt = "거래대금 비중 상승"
+        elif deltaPp < -0.3: share_txt = "거래대금 비중 하락"
+        else:               share_txt = "거래대금 비중 유지"
+        # badge가 표본부족/대장주단독이면 그대로, 아니면 방향 보조
+        if badge in ("표본 부족", "대장주 단독"):
+            return share_txt + " · " + badge
+        if badge == "유입 우세":     inner = "내부 상승 우세"
+        elif badge == "분배 우세 후보": inner = "내부 하락 우세"
+        else:                        inner = "내부 방향 혼조"
+        return share_txt + " · " + inner
+    theme_details = {}
+    for th, seq in theme_series.items():
+        series = [{"date": e["date"], "sharePct": round(e["shareOfMarket"]*100,2),
+                   "badge": e["badge"]} for e in seq]
+        summ = {}
+        shares = [e["shareOfMarket"] for e in seq]
+        latest_badge = seq[-1]["badge"] if seq else "혼조"
+        for w in WINDOWS:
+            f, t, d = window_move_pct(shares, w)
+            summ[str(w)] = {"from": f, "to": t, "deltaPp": d,
+                            "badge": latest_badge, "label": flow_label(d, latest_badge)}
+        theme_details[th] = {"series": series, "summary": summ}
+
     return {
         "generatedAt": out["generatedAt"],
         "startDate": out["startDate"], "endDate": out["endDate"],
         "windows": WINDOWS, "note": out["note"],
+        "marketSummary": market_summary_block,
         "market": {"series": market_line, "summary": market_summary},
-        "themes": {"summary": theme_summary}
+        "themes": {"summary": theme_summary},
+        "themeDetails": theme_details
     }
 
 def main():
