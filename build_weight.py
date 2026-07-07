@@ -27,7 +27,7 @@ WEIGHT_OUT = os.path.join(KRX_DIR, "output", "weight_output.json")
 
 WINDOWS   = [15, 30, 60, 90]
 AVG_N     = 3
-SHARE_EPS = 0.02   # 점유율 dead zone (%p) — 비공개
+SHARE_EPS = 0.3    # 점유율 dead zone (%p) — 유의미한 거래대금 집중만 판정. 비공개
 PRICE_EPS = 1.0    # 가격 dead zone (%) — 비공개
 TV_THRESHOLD = 100e8   # 거래대금 100억 이상만 대상
 RANK_WINDOW  = 15      # 압력 랭킹 기준 기간
@@ -163,10 +163,11 @@ def build_stock(code, meta, mkt_total):
         "summary": summary,
         "repState": rep["flowState"], "repLabel": rep["flowLabel"]
     }
-    # 랭킹용 요약 (RANK_WINDOW 기준)
+    # 랭킹용 요약 (RANK_WINDOW 기준). changeRate는 판독기간 가격변화로 통일 (오늘 하루 아님)
     rank_obj = {
         "code": code, "name": meta["name"], "market": d.get("market", meta["market"]),
-        "changeRate": round(meta["changeRate"], 2),
+        "changeRate": rep["priceChangePct"],
+        "todayChange": round(meta["changeRate"], 2),
         "tradingValue": round(meta["tradingValue"]),
         "shareDeltaPp": rep["shareDeltaPp"],
         "priceChangePct": rep["priceChangePct"],

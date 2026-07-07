@@ -130,8 +130,8 @@ function renderRank(cardId, list, kind){
       '<span class="cg '+cg(o.changeRate)+'">'+fmtPct(o.changeRate)+'</span></div>';
   }).join("");
   var note = kind==="buy"
-    ? '거래대금 점유율이 높아지고 가격도 함께 오른 종목입니다. 급등 종목은 변동성에 유의하세요.'
-    : '거래대금 점유율은 높아졌지만 가격은 하락한 종목입니다. 거래가 하락 방향에 실린 구간으로, 거래대금이 많다고 좋은 신호가 아닙니다.';
+    ? '최근 15일간 거래대금 점유율이 높아지고 가격도 함께 오른 종목입니다. 등락률은 15일 기준이며, 급등 종목은 변동성에 유의하세요.'
+    : '최근 15일간 거래대금 점유율은 높아졌지만 가격은 하락한 종목입니다. 거래가 하락 방향에 실린 구간으로, 거래대금이 많다고 좋은 신호가 아닙니다. 등락률은 15일 기준입니다.';
   document.getElementById(cardId).innerHTML=rows+'<div class="card-note">'+note+'</div>';
 }
 
