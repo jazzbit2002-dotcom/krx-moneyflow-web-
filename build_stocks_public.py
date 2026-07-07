@@ -165,8 +165,8 @@ def build_stock(code, name, mkt_total):
             "flowLabel": label
         }
 
-    # 대표 상태 = 30일 기준
-    rep = summary["30"]
+    # 대표 상태 = 15일 기준 (화면 디폴트와 일치)
+    rep = summary["15"]
     return {
         "code": code,
         "name": name,

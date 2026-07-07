@@ -1,7 +1,7 @@
 /* F29 한국 머니플로우 렌더 — krx_output.json + flow_series_public.json */
 var DATA = null;    // 하루 요약
 var FLOW = null;    // 자금흐름 시계열 (public slim)
-var curWin = 30;    // 자금흐름 윈도우
+var curWin = 15;    // 자금흐름 윈도우
 
 /* ---------- 포맷 ---------- */
 function won(v){
@@ -92,7 +92,7 @@ function renderFlow(){
 function setWin(w){ curWin=w; renderFlow(); renderRotation(); }
 
 /* ============ 종목 상세 바텀시트 (STEP3: 자금 압력 판독) ============ */
-var stockCache={}, stockWin=30, curStock=null;
+var stockCache={}, stockWin=15, curStock=null;
 function stateClassStock(state){
   if(state==="up_concentration") return "bg-in";
   if(state==="down_concentration") return "bg-out";
@@ -104,7 +104,7 @@ function stateClassStock(state){
 }
 function openStockSheet(code, name){
   if(!code) return;
-  curStock=code; stockWin=30;
+  curStock=code; stockWin=15;
   document.getElementById("stockSheet").classList.add("on");
   document.getElementById("stockSheetIn").innerHTML='<div class="loading">불러오는 중...</div>';
   if(stockCache[code]){ renderStockSheet(stockCache[code]); return; }
@@ -172,7 +172,7 @@ function renderStockSheet(d){
       '<span class="dp '+cg(sm.shareDeltaPp)+'">점유율 '+pp(sm.shareDeltaPp)+'</span></div>'+
     '<div><span class="sheet-state '+stateClassStock(st)+'">'+esc(sm.flowLabel)+'</span></div>'+
     '<div class="sheet-read">'+read+'</div>'+
-    '<div class="sheet-note">거래대금·가격 기준의 흐름이며, 실제 순매수(투자자별 수급) 데이터가 아닙니다.</div>';
+    '<div class="sheet-note">거래대금·가격 기준 참고지표입니다.</div>';
 }
 
 /* ============ 시장 핵심 요약 (STEP1: 단기/중기/장기 + 괴리) ============ */
@@ -221,10 +221,10 @@ function renderKeySummary(){
 }
 
 /* ============ 테마 상세 바텀시트 (STEP2) ============ */
-var sheetTheme=null, sheetWin=30;
+var sheetTheme=null, sheetWin=15;
 function openThemeSheet(theme){
   if(!FLOW || !FLOW.themeDetails || !FLOW.themeDetails[theme]){ return; }
-  sheetTheme=theme; sheetWin=30;
+  sheetTheme=theme; sheetWin=15;
   document.getElementById("themeSheet").classList.add("on");
   renderThemeSheet();
 }
@@ -278,7 +278,7 @@ function renderThemeSheet(){
       '<span class="dp '+dpCls+'">'+pp(sm.deltaPp)+'</span></div>'+
     '<div><span class="sheet-state '+stateClass(sm.badge)+'">'+esc(sm.label)+'</span></div>'+
     '<div class="sheet-read">'+read+'</div>'+
-    '<div class="sheet-note">이 화면은 거래대금 기준의 흐름입니다. 투자자별 순매수 데이터는 포함하지 않습니다.</div>';
+    '<div class="sheet-note">거래대금 기준 참고지표입니다.</div>';
 }
 
 /* ============ 테마 로테이션 (요약) ============ */
