@@ -256,6 +256,27 @@
   .prow .cg{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;flex-shrink:0;width:58px;text-align:right}
   .prow .warn{font-size:9px;background:#2E1F12;color:var(--gold);padding:1px 6px;border-radius:8px;margin-left:4px;flex-shrink:0}
   .card-note{font-size:11px;color:var(--txt3);line-height:1.5;margin-top:12px;padding-top:10px;border-top:0.5px solid var(--line)}
+  /* ===== 압력 방향 요약 ===== */
+  .pd-def{font-size:11.5px;color:var(--txt2);line-height:1.6;margin-bottom:14px}
+  .pbal-head{display:flex;justify-content:space-between;margin-bottom:6px}
+  .pbal-head .b{font-size:13px;font-weight:700}
+  .pbal-head .buy{color:var(--up)} .pbal-head .sell{color:var(--down)}
+  .pbal-bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--card2)}
+  .pbal-bar .buy{background:var(--up)} .pbal-bar .sell{background:var(--down)}
+  .pbal-read{font-size:12.5px;color:#D8D6CE;line-height:1.55;margin:12px 0 4px;font-weight:500}
+  .pd-mini{display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:0.5px solid var(--line)}
+  .pd-mini .m{flex:1;text-align:center}
+  .pd-mini .m .mn{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+  .pd-mini .m .ml{font-size:9.5px;color:var(--txt3);margin-top:1px;line-height:1.3}
+  .pd-sub-title{font-size:10.5px;color:var(--txt3);margin:14px 0 6px;font-weight:600}
+  .pd-sub{display:flex;gap:16px;font-size:11.5px;color:var(--txt2)}
+  .pd-sub b{color:var(--txt2);font-weight:600}
+  /* ===== 탭 ===== */
+  .ptabs{display:flex;gap:8px;margin:22px 0 4px}
+  .ptabs button{flex:1;padding:11px;border:1px solid var(--line);background:transparent;color:var(--txt2);border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .16s}
+  .ptabs button.active.buy{border-color:var(--up);color:var(--up);background:#12271C}
+  .ptabs button.active.sell{border-color:var(--down);color:var(--down);background:#2A1712}
+  .rank-sub{font-size:11px;color:var(--txt3);margin:10px 0 8px}
 
 </style>
 </head>
@@ -292,14 +313,12 @@
   </div>
   <div class="subtitle">거래대금이 <b>상승</b>에 실렸는지, <b>하락</b>에 실렸는지 보여주는 한국 주식 압력계입니다. 거래대금·가격 기준 참고지표.</div>
 
-  <div class="label">오늘의 돈의 무게</div>
+  <div class="label">오늘의 압력 방향</div>
   <div class="card" id="summaryCard"><div class="loading">불러오는 중...</div></div>
 
-  <div class="label">매수 압력 <span class="hint">· 최근 15일 거래대금이 상승에 실린 종목</span></div>
-  <div class="card" id="buyCard"><div class="loading">불러오는 중...</div></div>
-
-  <div class="label">매도 압력 <span class="hint">· 최근 15일 거래대금이 하락에 실린 종목</span></div>
-  <div class="card" id="sellCard"><div class="loading">불러오는 중...</div></div>
+  <div class="ptabs" id="pressureTabs"></div>
+  <div class="rank-sub" id="rankSub"></div>
+  <div class="card" id="rankCard"><div class="loading">불러오는 중...</div></div>
 
   <div class="datalink"><a onclick="document.getElementById('dataModal').classList.add('on')">데이터 및 유의사항</a></div>
 </div>
