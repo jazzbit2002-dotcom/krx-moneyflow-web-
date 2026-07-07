@@ -97,47 +97,23 @@ function renderStockSheet(d){
 }
 /* ============ 랭킹 렌더 ============ */
 function fmtPct(v){ return (v>0?"+":"")+v.toFixed(1)+"%"; }
-var activeTab="buy";
 
 function renderSummary(){
-  var c=WEIGHT.counts||{};
-  var buy=c.up_concentration||0, sell=c.down_concentration||0;
-  var fadeUp=c.fade_up||0, fadeDown=c.fade_down||0;
-  var tot=buy+sell||1;
-  var buyW=Math.round(buy/tot*100), sellW=100-buyW;
-  var read = buy>sell ? '오늘은 <b>상승 방향</b>에 거래대금이 실린 종목이 더 많은 편입니다.'
-           : sell>buy ? '오늘은 <b>하락 방향</b>에 거래대금이 실린 종목이 더 많은 편입니다.'
-           : '오늘은 상승·하락 압력이 비슷한 편입니다.';
+  var counts=WEIGHT.counts||{};
+  var buy=counts.up_concentration||0, sell=counts.down_concentration||0;
+  var fadeUp=counts.fade_up||0, fadeDown=counts.fade_down||0;
+  var read;
+  if(buy>sell*1.3) read='오늘은 상승 방향에 거래대금이 실린 종목이 더 많은 편입니다.';
+  else if(sell>buy*1.3) read='오늘은 하락 방향에 거래대금이 실린 종목이 더 많은 편입니다.';
+  else read='오늘은 상승 압력과 하락 압력이 함께 나타나는 혼조 구간입니다.';
   document.getElementById("summaryCard").innerHTML=
-    '<div class="pd-def">거래대금이 늘어난 종목 중 가격도 오른 쪽은 <b style="color:var(--up)">매수 압력</b>, 가격이 내린 쪽은 <b style="color:var(--down)">매도 압력</b>으로 나눠 봅니다.</div>'+
-    '<div class="pbal-head"><span class="b buy">매수 압력 '+buy+'</span><span class="b sell">매도 압력 '+sell+'</span></div>'+
-    '<div class="pbal-bar"><span class="buy" style="width:'+buyW+'%"></span><span class="sell" style="width:'+sellW+'%"></span></div>'+
-    '<div class="pbal-read">'+read+'</div>'+
-    '<div class="pd-sub-title">보조 신호</div>'+
-    '<div class="pd-sub"><span>관심도 약화 <b>'+fadeDown+'</b></span><span>얇은 상승 <b>'+fadeUp+'</b></span></div>';
-
-  // 기본 탭 = 많은 쪽
-  activeTab = buy>=sell ? "buy" : "sell";
-  renderTabs(buy, sell);
-  renderActiveList();
-}
-
-function renderTabs(buy, sell){
-  document.getElementById("pressureTabs").innerHTML=
-    '<button class="'+(activeTab==="buy"?"active buy":"")+'" onclick="switchTab(\'buy\')">매수 압력 '+buy+'</button>'+
-    '<button class="'+(activeTab==="sell"?"active sell":"")+'" onclick="switchTab(\'sell\')">매도 압력 '+sell+'</button>';
-}
-function switchTab(t){
-  activeTab=t;
-  var c=WEIGHT.counts||{};
-  renderTabs(c.up_concentration||0, c.down_concentration||0);
-  renderActiveList();
-}
-function renderActiveList(){
-  document.getElementById("rankSub").textContent = activeTab==="buy"
-    ? "최근 15일 거래대금이 상승에 실린 종목"
-    : "최근 15일 거래대금이 하락에 실린 종목";
-  renderRank("rankCard", activeTab==="buy"?WEIGHT.buyPressure:WEIGHT.sellPressure, activeTab);
+    '<div class="wsum">'+
+      '<div class="wsum-item"><div class="n up">'+buy+'</div><div class="l">매수 압력</div></div>'+
+      '<div class="wsum-item"><div class="n down">'+sell+'</div><div class="l">매도 압력</div></div>'+
+      '<div class="wsum-item"><div class="n" style="color:var(--txt2)">'+fadeDown+'</div><div class="l">관심도 약화</div></div>'+
+      '<div class="wsum-item"><div class="n" style="color:var(--txt2)">'+fadeUp+'</div><div class="l">얇은 상승</div></div>'+
+    '</div>'+
+    '<div class="wsum-read">'+read+'</div>';
 }
 
 function renderRank(cardId, list, kind){
@@ -166,6 +142,8 @@ function bootWeight(){
       WEIGHT=d;
       if(d.date) document.getElementById("updated").textContent=fmtDate(d.date);
       renderSummary();
+      renderRank("buyCard", d.buyPressure, "buy");
+      renderRank("sellCard", d.sellPressure, "sell");
     })
     .catch(function(){
       document.getElementById("summaryCard").innerHTML='<div class="empty">데이터를 불러오지 못했습니다.</div>';
