@@ -46,18 +46,35 @@ function renderFlow(){
 
   // 윈도우 구간만 자름
   var seg = series.slice(-curWin);
-  var W=480,H=150,PL=6,PR=6,PT=10,PB=18;
+  var W=480,H=150,PL=6,PR=30,PT=10,PB=18;
   var n=seg.length;
+  // y축 자동 스케일: 두 라인 전체 min/max에 여백 → 변화 확대
+  var allVals=[];
+  seg.forEach(function(d){ allVals.push(d.kospiSharePct); allVals.push(d.kosdaqSharePct); });
+  var vmin=Math.min.apply(null,allVals), vmax=Math.max.apply(null,allVals);
+  var pad=Math.max(2,(vmax-vmin)*0.18);
+  vmin=Math.max(0, vmin-pad); vmax=Math.min(100, vmax+pad);
+  var span=(vmax-vmin)||1;
   function x(i){ return PL + (W-PL-PR)*(n<=1?0:i/(n-1)); }
-  function y(v){ return PT + (H-PT-PB)*(1-(v/100)); } // 0~100%
+  function y(v){ return PT + (H-PT-PB)*(1-((v-vmin)/span)); }
   function line(key,color){
     var pts = seg.map(function(d,i){ return x(i).toFixed(1)+","+y(d[key]).toFixed(1); }).join(" ");
     return '<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="2.2" stroke-linejoin="round"/>';
   }
-  // y 가이드 (25/50/75)
-  var guides = [25,50,75].map(function(g){
-    return '<line x1="'+PL+'" y1="'+y(g)+'" x2="'+(W-PR)+'" y2="'+y(g)+'" stroke="#1F2A3D" stroke-width="1" stroke-dasharray="2 3"/>'+
-           '<text x="'+(W-PR)+'" y="'+(y(g)-2)+'" fill="#5A6B84" font-size="9" text-anchor="end">'+g+'%</text>';
+  // y 가이드: 실제 범위 안에서 3~4개 눈금 (동적)
+  function niceStep(range){
+    var raw=range/3;
+    var mag=Math.pow(10,Math.floor(Math.log(raw)/Math.LN10));
+    var norm=raw/mag;
+    var step=(norm<1.5?1:(norm<3?2:(norm<7?5:10)))*mag;
+    return step;
+  }
+  var step=niceStep(span);
+  var gvals=[]; var g0=Math.ceil(vmin/step)*step;
+  for(var gv=g0; gv<=vmax; gv+=step){ gvals.push(Math.round(gv*10)/10); }
+  var guides = gvals.map(function(g){
+    return '<line x1="'+PL+'" y1="'+y(g).toFixed(1)+'" x2="'+(W-PR)+'" y2="'+y(g).toFixed(1)+'" stroke="#1F2A3D" stroke-width="1" stroke-dasharray="2 3"/>'+
+           '<text x="'+(W-PR+3)+'" y="'+(y(g)+3).toFixed(1)+'" fill="#5A6B84" font-size="9">'+g+'%</text>';
   }).join("");
   var svg = '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" style="width:100%;height:135px;display:block;">'+
             guides + line("kospiSharePct","#3DD8B0") + line("kosdaqSharePct","#9D7BEA") + '</svg>';
