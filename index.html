@@ -73,9 +73,10 @@
   /* ===== 자금흐름 (요약 최상단) ===== */
   .flow-head{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
   .flow-title{font-size:14px;font-weight:700;color:var(--txt)}
-  .flow-win{display:flex;gap:5px;margin-left:auto}
-  .flow-win button{padding:4px 10px;border:1px solid var(--line);background:transparent;color:var(--txt3);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;transition:all .16s}
+  .flow-win{display:flex;gap:5px;margin-left:auto;flex-shrink:0}
+  .flow-win button{padding:4px 9px;border:1px solid var(--line);background:transparent;color:var(--txt3);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;transition:all .16s;white-space:nowrap;line-height:1.2}
   .flow-win button.on{border-color:var(--teal);color:var(--teal);background:var(--card2)}
+  .flow-head{flex-wrap:wrap;row-gap:8px}
   .flow-chart{margin:6px 0 10px}
   .flow-legend{display:flex;gap:16px;justify-content:center;font-size:11px;margin-top:2px}
   .flow-legend .lg{display:flex;align-items:center;gap:5px;color:var(--txt2)}
