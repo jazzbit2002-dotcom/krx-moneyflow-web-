@@ -101,25 +101,47 @@ def card_verdict(rec):
             f'</section>')
 
 
-def card_diff(rec, prev_rec):
-    """② 전일 대비: 직전 스냅샷과 lifecycle/axis 전환만. 없으면 숨김. 수치 diff 생성 금지."""
-    if not prev_rec:
-        return ''  # 이전 스냅샷 없음 → 카드 숨김(빈 카드 금지)
-    changes = []
-    if prev_rec.get('lifecycle') != rec.get('lifecycle'):
-        changes.append(('상태', prev_rec.get('lifecycle', ''), rec.get('lifecycle', '')))
-    if prev_rec.get('axis_state') != rec.get('axis_state'):
-        changes.append(('축 판정', prev_rec.get('axis_state', ''), rec.get('axis_state', '')))
-    if not changes:
-        return ('<section class="card"><h2>전일 대비</h2>'
-                '<p class="hint">직전 거래일과 판정 변화가 없습니다.</p></section>')
-    items = ''.join(
-        f'<li><span class="dk">{esc(k)}</span>'
-        f'<span class="dv"><s>{esc(p)}</s> &rarr; <b>{esc(c)}</b></span></li>'
-        for k, p, c in changes)
-    return (f'<section class="card"><h2>전일 대비</h2>'
-            f'<ul class="difflist">{items}</ul>'
-            f'<p class="hint">직전 거래일 판정과 비교한 상태 전환입니다.</p></section>')
+def card_diff(rec, hist, updated):
+    """② 직전 판정 대비: lifecycle 이력(final)만 비교. axis 이력 없음 → axis 추론 금지.
+    데이터: positions_history.json = {TICKER: [{date, candidate, final}, ...]} (날짜 오름차순).
+    비교 규칙(스펙 §2):
+      - history 마지막 date == updated → 마지막 두 final 비교 ([-2] → [-1])
+      - history 마지막 date <  updated → 마지막 final → 현재 lifecycle 비교
+      - history 마지막 date >  updated → HARD_FAIL(main에서 사전 차단, 여기선 방어)
+    candidate는 표시·비교에 미사용. 유효 이력 부족(<2 유효점)이면 카드 숨김."""
+    if not isinstance(hist, list) or len(hist) < 2:
+        return ''  # 이력 부족(SPCX 등) → 숨김(빈 카드 금지)
+    last = hist[-1]
+    last_date = last.get('date', '')
+    last_final = last.get('final')
+    if not last_final:
+        return ''
+    if last_date > updated:
+        return ''  # 방어: 미래 이력은 main HARD_FAIL이 먼저 차단
+    if last_date == updated:
+        prev_date = hist[-2].get('date', '')
+        prev_final = hist[-2].get('final')
+        cur_date = last_date
+        cur_final = last_final
+    else:  # last_date < updated
+        prev_date = last_date
+        prev_final = last_final
+        cur_date = updated
+        cur_final = rec.get('lifecycle')
+    if not prev_final or not cur_final:
+        return ''
+    if prev_final == cur_final:
+        return (f'<section class="card"><h2>직전 판정 대비</h2>'
+                f'<p class="hint">직전 판정({esc(prev_date)} · {esc(prev_final)})과 '
+                f'현재 판정에 변화가 없습니다.</p></section>')
+    return (f'<section class="card"><h2>직전 판정 대비</h2>'
+            f'<ul class="difflist"><li>'
+            f'<span class="dk">상태</span>'
+            f'<span class="dv"><s>{esc(prev_final)}</s> &rarr; <b>{esc(cur_final)}</b></span>'
+            f'</li></ul>'
+            f'<p class="hint">직전 판정일({esc(prev_date)}) 대비 현재 기준일({esc(cur_date)})의 '
+            f'상태 전환입니다. lifecycle 판정만 비교하며, 축(axis) 전환은 이력이 없어 표시하지 않습니다.</p>'
+            f'</section>')
 
 
 def card_rs(rec):
@@ -269,7 +291,7 @@ td.hold{color:var(--gold);font-size:.84rem}
 '''
 
 
-def page_html(rec, all_recs, prev_rec, updated):
+def page_html(rec, all_recs, hist, updated):
     ticker = rec['ticker']
     slug = slugify(ticker)
     name = rec.get('name_ko') or ticker
@@ -299,7 +321,7 @@ def page_html(rec, all_recs, prev_rec, updated):
         cards = body
     else:
         c1 = card_verdict(rec)
-        c2 = card_diff(rec, prev_rec)
+        c2 = card_diff(rec, hist, updated)
         c3 = card_rs(rec)
         c4 = card_theme_sync(rec, all_recs)
         c5 = card_bench(rec)
@@ -344,10 +366,16 @@ def main():
         raise SystemExit(f'FATAL: 소스 없음 또는 positions 키 부재: {SRC}')
     positions = data['positions']
     updated = data.get('updated', '')
-    prev = load_json('/root/moneyflow/positions_history.json') or {}
-    prev_map = {}
-    if isinstance(prev, dict) and 'positions' in prev:
-        prev_map = {r['ticker']: r for r in prev['positions'] if 'ticker' in r}
+    # positions_history.json = {TICKER: [{date, candidate, final}, ...]} (날짜 오름차순)
+    hist_raw = load_json('/root/moneyflow/positions_history.json') or {}
+    hist_map = hist_raw if isinstance(hist_raw, dict) else {}
+    # 미래 이력 방어(스펙 §2): history 마지막 date > updated 이면 HARD_FAIL
+    if updated:
+        future = [t for t, arr in hist_map.items()
+                  if isinstance(arr, list) and arr
+                  and isinstance(arr[-1], dict) and arr[-1].get('date', '') > updated]
+        if future:
+            raise SystemExit(f'HARD_FAIL: history 날짜가 기준일({updated})보다 미래: {sorted(future)[:10]}')
 
     # ── slug 충돌 전수 검사 (빌드 전, 충돌 1건이라도 HARD_FAIL) ──
     slug_map = {}
@@ -368,7 +396,7 @@ def main():
         t = r.get('ticker')
         if not t: continue
         slug = slugify(t)
-        html_out = page_html(r, positions, prev_map.get(t), updated)
+        html_out = page_html(r, positions, hist_map.get(t), updated)
         write_atomic(os.path.join(OUT_DIR, slug, 'index.html'), html_out)
         built.append(slug)
         if not (is_partial(r) or is_excluded(r)):
