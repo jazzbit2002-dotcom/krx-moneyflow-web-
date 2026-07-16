@@ -67,6 +67,9 @@ AXIS_SET = {'혼조', '양축우위', '양축열위', '중립'}
 
 # RS 신호 방향 한글(원문 유지 축) — signals 값 up/down/neutral/null
 SIG_KO = {'up': '우위', 'down': '열위', 'neutral': '중립'}
+# 신호 키 한글 라벨 (화면 노출 — 영문 키 제거)
+SIGKEY_KO = {'sector_20': '섹터 20일', 'market_20': '시장 20일',
+             'sector_60': '섹터 60일', 'market_60': '시장 60일'}
 
 
 def slugify(ticker):
@@ -140,7 +143,7 @@ def card_diff(rec, hist, updated):
             f'<span class="dv"><s>{esc(prev_final)}</s> &rarr; <b>{esc(cur_final)}</b></span>'
             f'</li></ul>'
             f'<p class="hint">직전 판정일({esc(prev_date)}) 대비 현재 기준일({esc(cur_date)})의 '
-            f'상태 전환입니다. lifecycle 판정만 비교하며, 축(axis) 전환은 이력이 없어 표시하지 않습니다.</p>'
+            f'상태 전환입니다. 생애주기 판정만 비교하며, 축(axis) 전환은 이력이 없어 표시하지 않습니다.</p>'
             f'</section>')
 
 
@@ -229,7 +232,6 @@ def card_bench(rec):
     return (f'<section class="card"><h2>비교 기준</h2>'
             f'<p>상대강도 비교 벤치마크: <b>{esc(bench)}</b></p>'
             f'{conf_line}'
-            f'<p class="hint">이 종목의 상대강도를 계산할 때 기준으로 삼은 ETF입니다.</p>'
             f'</section>')
 
 
@@ -239,7 +241,7 @@ def card_meta(rec, updated):
     n = rec.get('n_data', '-')
     status = rec.get('status', '-')
     status_ko = {'normal': '정상', 'short_history': '이력 짧음', 'extreme_initial_move': '초기 변동 과대'}.get(status, status)
-    sig_txt = ' / '.join(f'{k}: {SIG_KO.get(v, v) if v else "보류"}' for k, v in sig.items())
+    sig_txt = ' / '.join(f'{SIGKEY_KO.get(k, k)}: {SIG_KO.get(v, v) if v else "보류"}' for k, v in sig.items())
     return (f'<section class="card meta"><h2>판정 근거 · 데이터 상태</h2>'
             f'<ul class="metalist">'
             f'<li><span class="mk">데이터 상태</span><span class="mv">{esc(status_ko)}</span></li>'
