@@ -290,7 +290,6 @@ td.hold{color:var(--gold);font-size:.84rem}
 .pn{flex:1}.pl{color:var(--sub);font-size:.85rem}.pgo{color:var(--sub)}
 .confnote{color:var(--gold);font-size:.86rem;margin-top:6px}
 .mv{font-variant-numeric:tabular-nums;text-align:right}
-.foot{margin-top:28px;color:var(--sub);font-size:.8rem;text-align:center}
 '''
 
 
@@ -360,7 +359,6 @@ def page_html(rec, all_recs, hist, updated):
 <div class="grid">
 {cards}
 </div>
-<p class="foot">F29 · 미국 종목 상태 분석 (Phase 0) · 데이터 기준일 {esc(updated)}</p>
 </div>
 <div id="f29-footer"></div>
 </body>
