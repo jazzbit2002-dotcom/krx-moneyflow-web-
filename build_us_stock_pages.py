@@ -260,6 +260,7 @@ body{background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSyst
 @media(min-width:1024px){.wrap{padding:28px 24px 80px}}
 h1{font-size:1.5rem;margin-bottom:4px}
 .tick{color:var(--sub);font-size:.9rem;margin-bottom:18px}
+.subdate{color:var(--sub);font-size:.82rem;margin-top:-14px;margin-bottom:18px}
 .line1{font-size:1.02rem;margin-bottom:18px;padding:12px 14px;background:var(--card);border-left:3px solid var(--teal);border-radius:8px}
 .grid{display:grid;gap:14px}
 @media(min-width:1024px){.grid{grid-template-columns:1fr 1fr}.grid .full{grid-column:1/-1}}
@@ -346,18 +347,22 @@ def page_html(rec, all_recs, hist, updated):
 <meta name="description" content="{esc(desc)}">
 <meta name="robots" content="{robots}">
 <link rel="canonical" href="{canonical}">
+<script src="/shared/f29-chrome.js?v=20260709b" data-active="" defer></script>
 <style>{CSS}</style>
 </head>
 <body>
+<div id="f29-header"></div>
 <div class="wrap">
 <h1>{esc(name)}</h1>
 <p class="tick">{esc(ticker)} · 미국주식</p>
+<p class="subdate">{esc(updated)} 미국장 마감 기준 · 매 영업일 갱신</p>
 <p class="line1">{line1}</p>
 <div class="grid">
 {cards}
 </div>
 <p class="foot">F29 · 미국 종목 상태 분석 (Phase 0) · 데이터 기준일 {esc(updated)}</p>
 </div>
+<div id="f29-footer"></div>
 </body>
 </html>'''
 
