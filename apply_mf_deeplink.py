@@ -64,8 +64,9 @@ for label, old, new in anchors:
     s = s.replace(old, new)
 
 # 사후 가드
-if s.count('cardHead(p)') != 2:
-    print('GUARD FAIL: cardHead 호출 %d회 (expected 2)' % s.count('cardHead(p)')); sys.exit(3)
+_calls = s.count("'<div class=\"top\">'+cardHead(p)+")
+if _calls != 2:
+    print('GUARD FAIL: cardHead 호출 %d회 (expected 2)' % _calls); sys.exit(3)
 if 'function usHref' not in s or 'function cardHead' not in s or 'function ensureMfCss' not in s:
     print('GUARD FAIL: 헬퍼 누락'); sys.exit(4)
 
