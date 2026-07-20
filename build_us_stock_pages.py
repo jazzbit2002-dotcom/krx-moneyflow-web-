@@ -104,36 +104,43 @@ def card_verdict(rec):
             f'</section>')
 
 
-def card_diff(rec, hist, updated):
-    """② 직전 판정 대비: lifecycle 이력(final)만 비교. axis 이력 없음 → axis 추론 금지.
-    데이터: positions_history.json = {TICKER: [{date, candidate, final}, ...]} (날짜 오름차순).
-    비교 규칙(스펙 §2):
-      - history 마지막 date == updated → 마지막 두 final 비교 ([-2] → [-1])
-      - history 마지막 date <  updated → 마지막 final → 현재 lifecycle 비교
-      - history 마지막 date >  updated → HARD_FAIL(main에서 사전 차단, 여기선 방어)
-    candidate는 표시·비교에 미사용. 유효 이력 부족(<2 유효점)이면 카드 숨김."""
+def resolve_lifecycle_transition(rec, hist, updated):
+    """P05-6/② 공용 헬퍼(단일 SSOT): lifecycle final 전환 해석. card_diff와 상단 요약행이 공유(로직 복제 금지).
+    규칙(스펙 §2): history 마지막 date==updated → 마지막 두 final 비교([-2]→[-1]);
+    마지막 date<updated → 마지막 final vs 현재 lifecycle. 미래 date는 방어적 None(main HARD_FAIL 선차단). 유효<2 → None.
+    반환: None 또는 {prev_date, prev_final, cur_date, cur_final, changed}. candidate·axis·RS 미사용."""
     if not isinstance(hist, list) or len(hist) < 2:
-        return ''  # 이력 부족(SPCX 등) → 숨김(빈 카드 금지)
+        return None
     last = hist[-1]
     last_date = last.get('date', '')
     last_final = last.get('final')
-    if not last_final:
-        return ''
-    if last_date > updated:
-        return ''  # 방어: 미래 이력은 main HARD_FAIL이 먼저 차단
+    if not last_final or last_date > updated:
+        return None
     if last_date == updated:
         prev_date = hist[-2].get('date', '')
         prev_final = hist[-2].get('final')
         cur_date = last_date
         cur_final = last_final
-    else:  # last_date < updated
+    else:
         prev_date = last_date
         prev_final = last_final
         cur_date = updated
         cur_final = rec.get('lifecycle')
     if not prev_final or not cur_final:
-        return ''
-    if prev_final == cur_final:
+        return None
+    return {'prev_date': prev_date, 'prev_final': prev_final,
+            'cur_date': cur_date, 'cur_final': cur_final,
+            'changed': prev_final != cur_final}
+
+
+def card_diff(rec, hist, updated):
+    """② 직전 판정 대비: resolve_lifecycle_transition() 공유(로직 복제 금지). axis 추론 금지, candidate 미사용."""
+    tr = resolve_lifecycle_transition(rec, hist, updated)
+    if tr is None:
+        return ''  # 이력 부족(SPCX 등) → 숨김(빈 카드 금지)
+    prev_date, prev_final = tr['prev_date'], tr['prev_final']
+    cur_date, cur_final = tr['cur_date'], tr['cur_final']
+    if not tr['changed']:
         return (f'<section class="card"><h2>직전 판정 대비</h2>'
                 f'<p class="hint">직전 판정({esc(prev_date)} · {esc(prev_final)})과 '
                 f'현재 판정에 변화가 없습니다.</p></section>')
@@ -148,7 +155,9 @@ def card_diff(rec, hist, updated):
 
 
 def card_rs(rec):
-    """③ 기간 상대강도: RS_sector/market 20·60. 60 결측 시 보류 명시. 시계열 차트 금지."""
+    """③ 기간 상대강도: RS_sector/market 20·60. 60 결측 시 보류 명시. 시계열 차트 금지.
+    P05-2: 표→0 기준선 가로 막대. 방향=RS 숫자 부호, 색·라벨=signals(부호로 재판정 금지). 카드별 축 스케일."""
+    import math
     def _rs(v):
         if v is None: return None
         try: return round(float(v), 2)
@@ -156,50 +165,61 @@ def card_rs(rec):
     r_s20, r_m20 = _rs(rec.get('RS_sector_20')), _rs(rec.get('RS_market_20'))
     r_s60, r_m60 = _rs(rec.get('RS_sector_60')), _rs(rec.get('RS_market_60'))
     sig = rec.get('signals', {}) or {}
+    _vals = [v for v in (r_s20, r_m20, r_s60, r_m60) if v is not None]
+    _maxabs = max((abs(v) for v in _vals), default=0.0)
+    scale = max(10.0, math.ceil(_maxabs / 10.0) * 10.0)
+    TONE = {'up': 'up', 'down': 'dn', 'neutral': 'flat'}
 
-    def _row(label, val, sigkey):
-        if val is None:
-            return (f'<tr><td>{esc(label)}</td><td class="num">-</td>'
-                    f'<td class="hold">이력 부족 · 보류</td></tr>')
+    def _bar(label, val, sigkey):
         s = sig.get(sigkey)
-        sk = SIG_KO.get(s, '-') if s else '-'
-        return (f'<tr><td>{esc(label)}</td><td class="num">{fmt_pct(val)}</td>'
-                f'<td>{esc(sk)}</td></tr>')
+        if val is None:
+            return (f'<div class="rsrow"><span class="rslab">{esc(label)}</span>'
+                    f'<span class="rstrack"><i class="rzero"></i></span>'
+                    f'<span class="rsval">-</span>'
+                    f'<span class="rsdir hold">이력 부족 · 보류</span></div>')
+        tone = TONE.get(s, 'flat') if s else 'flat'
+        sk = SIG_KO.get(s, '') if s else ''
+        w = abs(val) / scale * 50.0
+        if val >= 0:
+            fill = f'<i class="rsfill {tone}" style="left:50%;width:{w:.2f}%"></i>'
+        else:
+            fill = f'<i class="rsfill {tone}" style="left:{(50.0 - w):.2f}%;width:{w:.2f}%"></i>'
+        return (f'<div class="rsrow"><span class="rslab">{esc(label)}</span>'
+                f'<span class="rstrack"><i class="rzero"></i>{fill}</span>'
+                f'<span class="rsval">{fmt_pct(val)}</span>'
+                f'<span class="rsdir {tone}">{esc(sk)}</span></div>')
 
-    rows = (_row('섹터 대비 · 20거래일', r_s20, 'sector_20')
-            + _row('시장 대비 · 20거래일', r_m20, 'market_20')
-            + _row('섹터 대비 · 60거래일', r_s60, 'sector_60')
-            + _row('시장 대비 · 60거래일', r_m60, 'market_60'))
+    bars = (_bar('섹터 대비 · 20거래일', r_s20, 'sector_20')
+            + _bar('시장 대비 · 20거래일', r_m20, 'market_20')
+            + _bar('섹터 대비 · 60거래일', r_s60, 'sector_60')
+            + _bar('시장 대비 · 60거래일', r_m60, 'market_60'))
     partial_note = ''
     if r_s60 is None or r_m60 is None:
         partial_note = ('<p class="hint">상장 후 데이터가 짧아 60거래일 상대강도는 아직 보류 중입니다. '
                         '20거래일 값만 참고하세요.</p>')
     return (f'<section class="card scen"><h2>기간 상대강도</h2>'
-            f'<table><thead><tr><th>기준</th><th>상대강도</th><th>방향</th></tr></thead>'
-            f'<tbody>{rows}</tbody></table>'
-            f'<p class="hint">벤치마크 대비 상대강도입니다. 가격이나 자금 흐름 수치가 아닙니다. '
-            f'양수 = 벤치 대비 우위, 음수 = 열위.</p>{partial_note}</section>')
+            f'<div class="rsprofile">{bars}</div>'
+            f'<p class="hint">막대 길이는 이 종목의 4개 상대강도 값을 같은 축에서 비교한 것입니다. '
+            f'종목 간 비교는 숫자를 기준으로 확인하세요. 벤치마크 대비 상대강도이며 가격이나 자금 흐름 수치가 아닙니다.</p>'
+            f'{partial_note}</section>')
 
 
 def card_theme_sync(rec, all_recs):
-    """④ 테마 동조: 같은 theme_group 안 동일 lifecycle 종목 수. self 제외 + 유효 peer 수."""
+    """④ 테마 동조 (P05-4): 같은 theme_group 유효 종목(self 포함) 중 동일 lifecycle 수. peer 목록은 self 제외."""
     tg = rec.get('theme_group')
     lc = rec.get('lifecycle')
     if not tg or not lc:
         return ''  # 결측 시 숨김
-    peers = [r for r in all_recs
-             if r.get('theme_group') == tg and r.get('ticker') != rec.get('ticker')
-             and r.get('lifecycle')]
-    total = len(peers)
-    if total == 0:
+    members = [r for r in all_recs if r.get('theme_group') == tg and r.get('lifecycle')]
+    peers = [r for r in members if r.get('ticker') != rec.get('ticker')]
+    if not peers:
         return ('<section class="card"><h2>테마 동조</h2>'
                 f'<p>소속 테마 <b>{esc(tg)}</b>에서 비교 가능한 다른 종목이 없습니다.</p></section>')
-    same = [r for r in peers if r.get('lifecycle') == lc]
-    n_same = len(same)
-    ratio = n_same / total if total else 0
-    if ratio >= 0.5:   sync_txt = '광범위'
-    elif ratio > 0:    sync_txt = '부분 확산'
-    else:              sync_txt = '단독'
+    total = len(members)
+    n_same = sum(1 for r in members if r.get('lifecycle') == lc)
+    if n_same >= total:  sync_txt = '광범위'
+    elif n_same <= 1:    sync_txt = '단독'
+    else:                sync_txt = '부분 확산'
     listed = ''.join(
         f'<li><a class="prow" data-ev="us_peer_click" href="/stock/us/{slugify(r["ticker"])}/">'
         f'<span class="pn">{esc(r.get("name_ko") or r["ticker"])}</span>'
@@ -207,10 +227,10 @@ def card_theme_sync(rec, all_recs):
         f'<span class="pgo" aria-hidden="true">&rsaquo;</span></a></li>'
         for r in peers)
     return (f'<section class="card"><h2>테마 동조</h2>'
-            f'<p class="synchead">소속 테마 <b>{esc(tg)}</b> · 유효 비교 종목 {total}개 중 '
-            f'같은 상태 <b>{n_same}</b>개 <span class="synctag">{sync_txt}</span></p>'
+            f'<p class="synchead">소속 테마 <b>{esc(tg)}</b> · 유효 {total}종 중 '
+            f'같은 상태(<b>{esc(lc)}</b>) <b>{n_same}</b>종 <span class="synctag">{esc(sync_txt)}</span></p>'
             f'<ul class="peers">{listed}</ul>'
-            f'<p class="hint">같은 테마에서 동일 상태로 분류된 종목 수입니다. 방향을 전망하지 않습니다.</p>'
+            f'<p class="hint">소속 테마의 유효 분류 종목(자기 포함) 중 동일 상태 수입니다. 방향을 전망하지 않습니다.</p>'
             f'</section>')
 
 
@@ -236,20 +256,34 @@ def card_bench(rec):
 
 
 def card_meta(rec, updated):
-    """⑥ 판정 근거·데이터 상태: signals·status·n_data·updated. 행동 문구 금지, stale 숨김 금지."""
+    """⑥ 판정 근거·데이터 상태: signals 2×2 매트릭스 + status·n_data·updated. 행동 문구 금지, stale 숨김 금지.
+    P05-5: 신호 한 줄 나열 → sector/market × 20/60 2×2(값=signals 직접, up=우위/neutral=중립/down=열위/null=축적 중)."""
     sig = rec.get('signals', {}) or {}
     n = rec.get('n_data', '-')
     status = rec.get('status', '-')
     status_ko = {'normal': '정상', 'short_history': '이력 짧음', 'extreme_initial_move': '초기 변동 과대'}.get(status, status)
-    sig_txt = ' / '.join(f'{SIGKEY_KO.get(k, k)}: {SIG_KO.get(v, v) if v else "보류"}' for k, v in sig.items())
+    TONE = {'up': 'up', 'down': 'dn', 'neutral': 'flat'}
+
+    def _cell(key):
+        v = sig.get(key)
+        if not v:
+            return '<span class="sc hold">축적 중</span>'
+        return f'<span class="sc {TONE.get(v, "flat")}">{esc(SIG_KO.get(v, v))}</span>'
+
+    matrix = (f'<div class="sigmx">'
+              f'<span class="sh"></span><span class="sh">20거래일</span><span class="sh">60거래일</span>'
+              f'<span class="sr">섹터</span>{_cell("sector_20")}{_cell("sector_60")}'
+              f'<span class="sr">시장</span>{_cell("market_20")}{_cell("market_60")}'
+              f'</div>')
     return (f'<section class="card meta"><h2>판정 근거 · 데이터 상태</h2>'
+            f'{matrix}'
             f'<ul class="metalist">'
             f'<li><span class="mk">데이터 상태</span><span class="mv">{esc(status_ko)}</span></li>'
             f'<li><span class="mk">사용 데이터 수</span><span class="mv">{esc(n)}개</span></li>'
-            f'<li><span class="mk">신호 요약</span><span class="mv">{esc(sig_txt)}</span></li>'
             f'<li><span class="mk">데이터 기준일</span><span class="mv">{esc(updated)}</span></li>'
             f'</ul>'
-            f'<p class="hint">미국 시장 종가(ET) 기준 데이터입니다. 거래 지시가 아닌 상태 참고 자료입니다.</p>'
+            f'<p class="hint">신호는 섹터·시장 대비 20·60거래일 상대강도 방향입니다. '
+            f'미국 시장 종가(ET) 기준 데이터입니다. 거래 지시가 아닌 상태 참고 자료입니다.</p>'
             f'</section>')
 
 
@@ -290,10 +324,135 @@ td.hold{color:var(--gold);font-size:.84rem}
 .pn{flex:1}.pl{color:var(--sub);font-size:.85rem}.pgo{color:var(--sub)}
 .confnote{color:var(--gold);font-size:.86rem;margin-top:6px}
 .mv{font-variant-numeric:tabular-nums;text-align:right}
+.rsprofile{display:flex;flex-direction:column;gap:9px;margin:2px 0 4px}
+.rsrow{display:grid;grid-template-columns:118px 1fr 66px 42px;align-items:center;gap:8px;font-size:.86rem}
+.rslab{color:var(--sub);word-break:keep-all;line-height:1.2}
+.rstrack{position:relative;height:10px}
+.rzero{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:#374151}
+.rsfill{position:absolute;top:3px;height:4px;border-radius:2px}
+.rsfill.up{background:var(--teal)}.rsfill.dn{background:var(--up)}.rsfill.flat{background:var(--flat)}
+.rsval{font-variant-numeric:tabular-nums;text-align:right}
+.rsdir{text-align:right;font-size:.82rem}
+.rsdir.up{color:var(--teal)}.rsdir.dn{color:var(--up)}.rsdir.flat{color:var(--sub)}
+.rsdir.hold{color:var(--gold);grid-column:3/5;font-size:.78rem}
+.sigmx{display:grid;grid-template-columns:auto 1fr 1fr;gap:6px 8px;margin:2px 0 12px;align-items:center;font-size:.88rem}
+.sigmx .sh{color:var(--sub);text-align:center;font-size:.76rem}
+.sigmx .sr{color:var(--sub)}
+.sc{text-align:center;padding:5px 4px;font-weight:600}
+.sc.up{color:var(--teal)}.sc.dn{color:var(--up)}.sc.flat{color:var(--sub)}.sc.hold{color:var(--gold);font-weight:400;font-size:.82rem}
+@media(max-width:420px){.rsrow{grid-template-columns:104px 1fr 52px 34px;gap:5px;font-size:.8rem}.sigmx{font-size:.82rem}}
+.tl{list-style:none}
+.tlrow{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1f2937}
+.tlrow:last-child{border-bottom:0}
+.tldot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;background:var(--flat)}
+.tldot.up-c{background:var(--teal)}.tldot.wt-c{background:var(--gold)}.tldot.dn-c{background:var(--up)}
+.tldate{color:var(--sub);font-variant-numeric:tabular-nums;font-size:.84rem;flex:0 0 auto}
+.tlstate{font-weight:600}
+.tlbadge{margin-left:auto;background:#1f2937;color:var(--gold);font-size:.72rem;padding:2px 8px;border-radius:10px}
+.tlaccum{color:var(--gold);padding:8px 0;font-size:.95rem}
+.topchange{color:var(--sub);font-size:.86rem;margin:-6px 0 18px;white-space:normal;word-break:keep-all}
+.pat{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:2px 0 10px}
+.patname{font-size:1.15rem;font-weight:700;color:var(--tx)}
+.patscore{font-size:1.05rem;font-weight:700;color:var(--gold);white-space:nowrap}
+.patmax{font-size:.8rem;font-weight:400;color:var(--sub);margin-left:1px}
+.patlink{margin-top:10px}
+.patlink a{color:var(--teal);text-decoration:none;font-size:.9rem}
+.patlink a:hover{text-decoration:underline}
 '''
 
 
-def page_html(rec, all_recs, hist, updated):
+def load_pattern_judgments():
+    """US-P05-PATTERN: Pattern Lab 판정 최신 가용분 로드 -> {TICKER: row}.
+    빌더(07:00 UTC)가 pattern cron(07:30/07:40)보다 먼저 돌아 당일 파일이 없을 수 있다.
+    가장 최근 존재 파일을 쓰고, 화면에 그 기준일을 명시한다(보정/추정 금지)."""
+    import glob
+    d = '/root/f29-pattern-lab/history/pattern_judgments'
+    try:
+        files = sorted(glob.glob(os.path.join(d, '*.jsonl')))
+    except Exception:
+        return {}
+    if not files:
+        return {}
+    out = {}
+    try:
+        with open(files[-1], encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                t = r.get('ticker')
+                if t and isinstance(r.get('top1'), dict):
+                    out[t] = r
+    except Exception:
+        return {}
+    return out
+
+
+def card_pattern(rec, pj, updated):
+    """차트 형태 (US-P05-PATTERN). Pattern Lab top1 표시, 미보유 -> None(카드 생략)."""
+    r = (pj or {}).get(rec.get('ticker'))
+    if not r:
+        return None
+    t1 = r.get('top1') or {}
+    title = t1.get('pattern_title')
+    score = t1.get('score')
+    if not title or score is None:
+        return None
+    base = r.get('data_last_date') or r.get('date') or ''
+    bars = r.get('bars', 60)
+    note = ''
+    if base and updated and base != updated:
+        note = (f'<p class="hint">형태 비교 기준일 {esc(base)} — 이 페이지 기준일'
+                f'({esc(updated)})과 다릅니다.</p>')
+    return (f'<section class="card"><h2>차트 형태</h2>'
+            f'<p class="pat"><span class="patname">{esc(title)}</span>'
+            f'<span class="patscore">닮음 {esc(score)}<span class="patmax">/100</span></span></p>'
+            f'<p class="hint">최근 {esc(bars)}거래일 종가 흐름을 학습용 형태와 비교한 닮음 '
+            f'점수입니다. 상승·하락 확률이 아니며 방향을 전망하지 않습니다.</p>'
+            f'{note}'
+            f'<p class="patlink"><a href="/lab/match.html?ticker={esc(rec["ticker"])}">차트분석 연구소에서 직접 비교 &rsaquo;</a></p>'
+            f'</section>')
+
+
+def card_history(rec, hist, updated):
+    """판정 이력 타임라인 (P05-1): positions_history final 전환점 + candidate≠final 강제포함(최근 창).
+    이력<2 → '축적 중 · N일째'. candidate 값 병렬노출 금지(배지만). 방향예측·성과해석 금지. 라벨=엔진 final SSOT."""
+    seq = [e for e in (hist or []) if e.get('date') and e.get('final')]
+    seq.sort(key=lambda e: e['date'])
+    if len(seq) < 2:
+        return (f'<section class="card"><h2>최근 판정 이력</h2>'
+                f'<p class="tlaccum">이력 축적 중 · {len(seq)}일째</p>'
+                f'<p class="hint">판정 이력이 쌓이면 상태 변화 흐름을 표시합니다. 방향을 전망하지 않습니다.</p>'
+                f'</section>')
+    n = len(seq)
+    keep = []
+    for i, e in enumerate(seq):
+        changed = (i > 0 and e['final'] != seq[i - 1]['final'])
+        mismatch = (e.get('candidate') is not None and e.get('candidate') != e.get('final'))
+        if i == 0 or i == n - 1 or changed or mismatch:
+            keep.append((e, mismatch))
+    if len(keep) > 8:
+        keep = [keep[0]] + keep[-7:]
+
+    def _row(e, mm):
+        badge = '<span class="tlbadge">당일 후보 판정 상이</span>' if mm else ''
+        return (f'<li class="tlrow"><span class="tldot {us_tone(e["final"])}"></span>'
+                f'<span class="tldate">{esc(e["date"])}</span>'
+                f'<span class="tlstate">{esc(e["final"])}</span>{badge}</li>')
+
+    rows = ''.join(_row(e, mm) for e, mm in keep)
+    return (f'<section class="card"><h2>최근 판정 이력</h2>'
+            f'<ul class="tl">{rows}</ul>'
+            f'<p class="hint">생애주기 판정(final)의 변화 흐름입니다. 반복 구간은 생략하고 전환일과 '
+            f'당일 후보 판정이 다른 날을 표시합니다. 방향을 전망하지 않습니다.</p>'
+            f'</section>')
+
+
+def page_html(rec, all_recs, hist, updated, pj=None):
     ticker = rec['ticker']
     slug = slugify(ticker)
     name = rec.get('name_ko') or ticker
@@ -325,10 +484,12 @@ def page_html(rec, all_recs, hist, updated):
         c1 = card_verdict(rec)
         c2 = card_diff(rec, hist, updated)
         c3 = card_rs(rec)
+        ch = card_history(rec, hist, updated)
         c4 = card_theme_sync(rec, all_recs)
+        cp = card_pattern(rec, pj, updated)   # US-P05-PATTERN: 미보유 시 None -> 생략
         c5 = card_bench(rec)
         c6 = card_meta(rec, updated)
-        parts = [p for p in (c1, c2, c3, c4, c5, c6) if p]
+        parts = [p for p in (c1, c2, c3, ch, c4, cp, c5, c6) if p]
         # 홀수 카드면 마지막 카드 full (PC 2단 하단 공백 흡수) — nth-child 미사용, 문자열 주입
         if len(parts) % 2 == 1:
             parts[-1] = parts[-1].replace('<section class="card', '<section class="card full', 1)
@@ -336,6 +497,16 @@ def page_html(rec, all_recs, hist, updated):
 
     line1 = f'{esc(name)}의 오늘 상태는 <b>{esc(lc)}</b> · {esc(ax)}입니다.' if not excluded \
         else f'{esc(name)}는 현재 판정 보류 상태입니다.'
+    _tr = resolve_lifecycle_transition(rec, hist, updated)
+    if _tr and not excluded:
+        if _tr['changed']:
+            toprow = (f'<p class="topchange">직전 판정({esc(_tr["prev_date"])}): '
+                      f'{esc(_tr["prev_final"])} &rarr; {esc(_tr["cur_final"])}</p>')
+        else:
+            toprow = (f'<p class="topchange">직전 판정({esc(_tr["prev_date"])}) 대비 변화 없음 · '
+                      f'{esc(_tr["cur_final"])}</p>')
+    else:
+        toprow = ''
 
     return f'''<!DOCTYPE html>
 <html lang="ko">
@@ -355,7 +526,7 @@ def page_html(rec, all_recs, hist, updated):
 <h1>{esc(name)}</h1>
 <p class="tick">{esc(ticker)} · 미국주식</p>
 <p class="subdate">{esc(updated)} 미국장 마감 기준 · 매 영업일 갱신</p>
-<p class="line1">{line1}</p>
+<p class="line1">{line1}</p>{toprow}
 <div class="grid">
 {cards}
 </div>
@@ -397,11 +568,13 @@ def main():
 
     # ── 빌드 ──
     built, indexed = [], []
+    pj = load_pattern_judgments()   # US-P05-PATTERN: 루프 밖 1회 로드
+    print('[us-build] pattern_judgments=%d' % len(pj))
     for r in positions:
         t = r.get('ticker')
         if not t: continue
         slug = slugify(t)
-        html_out = page_html(r, positions, hist_map.get(t), updated)
+        html_out = page_html(r, positions, hist_map.get(t), updated, pj)
         write_atomic(os.path.join(OUT_DIR, slug, 'index.html'), html_out)
         built.append(slug)
         if not (is_partial(r) or is_excluded(r)):
