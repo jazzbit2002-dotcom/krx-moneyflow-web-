@@ -25,7 +25,18 @@ anchors.append(('helper',
     if(!t) return "";
     return "/stock/us/"+String(t).toUpperCase().replace(/\\./g,"-")+"/?ref=moneyflow";
   }
+  var _mfCss=false;
+  function ensureMfCss(){
+    if(_mfCss||!document.head) return; _mfCss=true;
+    var st=document.createElement("style");
+    st.textContent='.mflink{display:inline-flex;align-items:baseline;gap:6px;text-decoration:none;color:inherit;border-radius:4px}'
+      +'.mflink:hover .nm,.mflink:focus-visible .nm{text-decoration:underline}'
+      +'.mflink:focus-visible{outline:2px solid #3DDC84;outline-offset:2px}'
+      +'.mflink .nm::after{content:"\\203A";margin-left:4px;opacity:.55;font-size:.9em}';
+    document.head.appendChild(st);
+  }
   function cardHead(p){
+    ensureMfCss();
     var inner='<span class="tk">'+esc(p.ticker)+'</span><span class="nm">'+esc(p.name_ko)+'</span>';
     var h=usHref(p.ticker);
     return h ? '<a class="mflink" href="'+h+'">'+inner+'</a>' : inner;
@@ -46,16 +57,6 @@ anchors.append(('special',
 """      '<div class="top">'+cardHead(p)+
       '<span class="badge bg-neu">관찰 시작</span></div>'+"""))
 
-# 앵커4: 링크 스타일 (</style> 앞)
-anchors.append(('css',
-"""</style>""",
-"""/* MF-DEEPLINK */
-.mflink{display:inline-flex;align-items:baseline;gap:6px;text-decoration:none;color:inherit;border-radius:4px}
-.mflink:hover .nm,.mflink:focus-visible .nm{text-decoration:underline}
-.mflink:focus-visible{outline:2px solid #3DDC84;outline-offset:2px}
-.mflink .nm::after{content:"\\203A";margin-left:4px;opacity:.55;font-size:.9em}
-</style>"""))
-
 for label, old, new in anchors:
     cnt = s.count(old)
     if cnt != 1:
@@ -65,7 +66,7 @@ for label, old, new in anchors:
 # 사후 가드
 if s.count('cardHead(p)') != 2:
     print('GUARD FAIL: cardHead 호출 %d회 (expected 2)' % s.count('cardHead(p)')); sys.exit(3)
-if 'function usHref' not in s or 'function cardHead' not in s:
+if 'function usHref' not in s or 'function cardHead' not in s or 'function ensureMfCss' not in s:
     print('GUARD FAIL: 헬퍼 누락'); sys.exit(4)
 
 # 백업
