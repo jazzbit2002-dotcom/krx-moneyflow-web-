@@ -24,7 +24,7 @@ MAP = {
 
     'MU':    ('\uba54\ubaa8\ub9ac/HBM', '\uba54\ubaa8\ub9ac\u00b7\uc2a4\ud1a0\ub9ac\uc9c0'),
     'WDC':   ('\uc2a4\ud1a0\ub9ac\uc9c0/AI\uc800\uc7a5', '\uba54\ubaa8\ub9ac\u00b7\uc2a4\ud1a0\ub9ac\uc9c0'),
-    'SNDK':  ('\uba54\ubaa8\ub9ac/\ub0ae\ub4dc', '\uba54\ubaa8\ub9ac\u00b7\uc2a4\ud1a0\ub9ac\uc9c0'),
+    'SNDK':  ('\uba54\ubaa8\ub9ac/\ub0b8\ub4dc', '\uba54\ubaa8\ub9ac\u00b7\uc2a4\ud1a0\ub9ac\uc9c0'),
 
     'LITE':  ('\uad11\ud1b5\uc2e0/AI', '\uad11\ud1b5\uc2e0'),
     'COHR':  ('\uad11\ud1b5\uc2e0/AI', '\uad11\ud1b5\uc2e0'),
@@ -127,3 +127,27 @@ print('after_sha=%s' % hashlib.sha256(after.encode('utf-8')).hexdigest())
 print('themes=%d (singletons=%d)' % (len(c), sum(1 for v in c.values() if v == 1)))
 for k, v in c.most_common():
     print('  %2d %s' % (v, k))
+
+# ── 파생물 동반 갱신: positions_output.json ──
+# 다음 cron(positions.py)에서 SSOT로부터 동일하게 재생성되지만,
+# Databento 재호출 없이 즉시 반영하기 위해 같은 매핑을 적용한다.
+PO = '/root/moneyflow/positions_output.json'
+if os.path.exists(PO):
+    shutil.copy2(PO, os.path.join(bdir, 'positions_output.json'))
+    praw = io.open(PO, encoding='utf-8').read()
+    pd = json.loads(praw)
+    n = 0
+    for x in pd.get('positions', []):
+        t = x.get('ticker')
+        if t in MAP:
+            x['theme_group'] = MAP[t][1]
+            n += 1
+    ptmp = PO + '.tmp'
+    with io.open(ptmp, 'w', encoding='utf-8') as f:
+        json.dump(pd, f, ensure_ascii=False)
+    os.replace(ptmp, PO)
+    os.chmod(PO, 0o644)
+    pc = Counter(x.get('theme_group') for x in json.loads(io.open(PO, encoding='utf-8').read())['positions'])
+    print('positions_output updated: %d/%d, themes=%d' % (n, len(pd.get('positions', [])), len(pc)))
+else:
+    print('positions_output.json 부재 — 건너뜀(다음 cron에서 생성)')
